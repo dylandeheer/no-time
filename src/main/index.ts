@@ -3,7 +3,6 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { nanoid } from "nanoid";
-import { autoUpdater } from "electron-updater";
 import { MatchCache } from "./matching.js";
 import {
   loadProjects,
@@ -621,21 +620,27 @@ app.whenReady().then(async () => {
     broadcast();
   });
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.checkForUpdatesAndNotify().catch(() => {});
-
-  autoUpdater.on("update-available", () => {
-    dashboard?.webContents.send("update-available");
-  });
-
-  autoUpdater.on("update-downloaded", () => {
-    dashboard?.webContents.send("update-downloaded");
-  });
-
-  ipcMain.handle("install-update", () => {
-    autoUpdater.quitAndInstall();
-  });
+  if (app.isPackaged) {
+    try {
+      const { autoUpdater } = await import("electron-updater");
+      autoUpdater.autoDownload = true;
+      autoUpdater.autoInstallOnAppQuit = true;
+      autoUpdater.on("update-available", () => {
+        dashboard?.webContents.send("update-available");
+      });
+      autoUpdater.on("update-downloaded", () => {
+        dashboard?.webContents.send("update-downloaded");
+      });
+      ipcMain.handle("install-update", () => {
+        autoUpdater.quitAndInstall();
+      });
+      autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    } catch (err) {
+      console.warn("Auto-update not available:", err);
+    }
+  } else {
+    ipcMain.handle("install-update", () => {});
+  }
 
   await trackLoop();
 });
