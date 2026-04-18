@@ -19,10 +19,17 @@ export function App() {
   const [view, setView] = useState<View>("projects");
   const [detailProjectId, setDetailProjectId] = useState<string | null>(null);
   const [idleData, setIdleData] = useState<{ idleDurationSeconds: number } | null>(null);
+  const [updateReady, setUpdateReady] = useState(false);
 
   useEffect(() => {
     return window.electronAPI.onIdleReturned((data) => {
       setIdleData(data);
+    });
+  }, []);
+
+  useEffect(() => {
+    return window.electronAPI.onUpdateDownloaded(() => {
+      setUpdateReady(true);
     });
   }, []);
 
@@ -128,6 +135,17 @@ export function App() {
         </aside>
 
         <main className="flex-1 overflow-y-auto">
+          {updateReady && (
+            <div className="flex items-center justify-between border-b border-border bg-primary/10 px-5 py-2">
+              <span className="text-sm">Update downloaded — restart to apply</span>
+              <button
+                onClick={() => window.electronAPI.installUpdate()}
+                className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Restart
+              </button>
+            </div>
+          )}
           <div key={detailProjectId ? `detail-${detailProjectId}` : view} className="animate-fade-slide-in">
             {view === "projects" && !detailProject && (
               <ProjectsView state={state} onOpenProject={openProjectDetail} />

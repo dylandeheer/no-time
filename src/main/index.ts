@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { nanoid } from "nanoid";
+import { autoUpdater } from "electron-updater";
 import { MatchCache } from "./matching.js";
 import {
   loadProjects,
@@ -618,6 +619,22 @@ app.whenReady().then(async () => {
   globalShortcut.register("CommandOrControl+Shift+P", () => {
     isPaused = !isPaused;
     broadcast();
+  });
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+
+  autoUpdater.on("update-available", () => {
+    dashboard?.webContents.send("update-available");
+  });
+
+  autoUpdater.on("update-downloaded", () => {
+    dashboard?.webContents.send("update-downloaded");
+  });
+
+  ipcMain.handle("install-update", () => {
+    autoUpdater.quitAndInstall();
   });
 
   await trackLoop();

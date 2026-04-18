@@ -92,6 +92,20 @@ const api = {
 
   getAppVersion: (): Promise<string> => ipcRenderer.invoke("get-app-version"),
 
+  installUpdate: (): Promise<void> => ipcRenderer.invoke("install-update"),
+
+  onUpdateAvailable: (listener: () => void): (() => void) => {
+    const handler = (): void => listener();
+    ipcRenderer.on("update-available", handler);
+    return () => ipcRenderer.off("update-available", handler);
+  },
+
+  onUpdateDownloaded: (listener: () => void): (() => void) => {
+    const handler = (): void => listener();
+    ipcRenderer.on("update-downloaded", handler);
+    return () => ipcRenderer.off("update-downloaded", handler);
+  },
+
   onTrackingUpdate: (listener: TrackingListener): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, state: TrackingState): void => listener(state);
     ipcRenderer.on("tracking-update", handler);

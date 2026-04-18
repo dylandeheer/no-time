@@ -1,0 +1,51 @@
+appId: com.notime.app
+productName: No Time
+directories:
+  output: release
+  buildResources: assets
+files:
+  - out/**/*
+  - assets/icon.png
+  - assets/iconTemplate.png
+  - assets/iconTemplate@2x.png
+
+mac:
+  category: public.app-category.productivity
+  icon: assets/icon.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: entitlements.mac.plist
+  entitlementsInherit: entitlements.mac.inherit.plist
+  target:
+    - dmg
+    - zip
+
+dmg:
+  sign: false
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  icon: assets/icon.png
+  target:
+    - nsis
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+
+linux:
+  icon: assets/icons
+  category: Utility
+  target:
+    - AppImage
+    - deb
+
+publish:
+  provider: github
