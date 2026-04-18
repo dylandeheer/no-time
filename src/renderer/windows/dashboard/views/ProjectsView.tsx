@@ -74,15 +74,37 @@ export function ProjectsView({ state, onOpenProject }: Props) {
       </header>
 
       {state.projects.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-12 text-center">
-          <h3 className="text-base font-medium">No projects yet</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Create your first project to automatically group your tracked activities.
+        <div className="rounded-lg border border-dashed border-border p-12">
+          <h3 className="text-center text-base font-medium">Get started with No Time</h3>
+          <p className="mt-1 text-center text-sm text-muted-foreground">
+            Follow these steps to organize your tracked activities.
           </p>
-          <Button className="mt-4" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Create your first project
-          </Button>
+
+          <div className="mx-auto mt-6 max-w-md space-y-4">
+            {[
+              { step: 1, title: "Tracking starts automatically", desc: "No Time detects which app and window you're using in the background." },
+              { step: 2, title: "Check your activities", desc: "Switch to the Activities tab to see everything being tracked." },
+              { step: 3, title: "Create a project", desc: "Group related activities under a project for easier tracking." },
+              { step: 4, title: "Add rules to auto-group", desc: "Set rules to automatically assign activities by app name or title pattern." },
+            ].map((item) => (
+              <div key={item.step} className="flex gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold">
+                  {item.step}
+                </span>
+                <div>
+                  <div className="text-sm font-medium">{item.title}</div>
+                  <div className="text-xs text-muted-foreground">{item.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 text-center">
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Create your first project
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

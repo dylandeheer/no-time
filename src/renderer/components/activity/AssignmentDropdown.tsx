@@ -36,7 +36,23 @@ export function AssignmentDropdown({ activity, project, projects }: Props) {
     try {
       await window.electronAPI.assignActivity({ activityKey: key, projectId });
       const target = projects.find((p) => p.id === projectId);
-      toast.success(`Assigned to "${target?.name}"`);
+      toast.success(`Assigned to "${target?.name}"`, {
+        action: {
+          label: `Auto-assign all "${activity.app}"?`,
+          onClick: async () => {
+            try {
+              await window.electronAPI.createRule({
+                projectId,
+                type: "app",
+                pattern: activity.app,
+              });
+              toast.success(`Rule created for "${activity.app}"`);
+            } catch {
+              toast.error("Failed to create rule");
+            }
+          },
+        },
+      });
     } catch {
       toast.error("Failed to assign");
     }

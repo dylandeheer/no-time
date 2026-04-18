@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, ipcMain, nativeImage, dialog } from "electron";
+import { app, BrowserWindow, Tray, ipcMain, nativeImage, dialog, globalShortcut } from "electron";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -605,10 +605,26 @@ app.whenReady().then(async () => {
   registerIpc();
   makeWidget();
   makeDashboard();
+
+  globalShortcut.register("CommandOrControl+Shift+T", () => {
+    if (!widget) return;
+    if (widget.isVisible()) widget.hide();
+    else {
+      widget.show();
+      widget.focus();
+    }
+  });
+
+  globalShortcut.register("CommandOrControl+Shift+P", () => {
+    isPaused = !isPaused;
+    broadcast();
+  });
+
   await trackLoop();
 });
 
 app.on("before-quit", () => {
+  globalShortcut.unregisterAll();
   if (trackingDirty) saveTracking(trackingDays);
 });
 

@@ -26,6 +26,18 @@ export function App() {
     });
   }, []);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === "1") { e.preventDefault(); setView("projects"); setDetailProjectId(null); }
+      if (e.key === "2") { e.preventDefault(); setView("activities"); setDetailProjectId(null); }
+      if (e.key === "3") { e.preventDefault(); setView("settings"); setDetailProjectId(null); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   const openProjectDetail = (id: string) => {
     setDetailProjectId(id);
   };
