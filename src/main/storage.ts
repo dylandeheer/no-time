@@ -1,5 +1,5 @@
 import Store from "electron-store";
-import type { Project, ProjectId, Rule } from "@shared/types";
+import type { Project, ProjectId, Rule, AppSettings } from "@shared/types";
 
 interface ProjectsStoreSchema {
   projects: Project[];
@@ -24,6 +24,22 @@ const trackingStore = new Store<TrackingStoreSchema>({
   name: "tracking",
   defaults: { days: {} },
 });
+
+const settingsStore = new Store<AppSettings>({
+  name: "settings",
+  defaults: {
+    trackingIntervalMs: 1000,
+    idle: { enabled: true, timeoutMinutes: 5 },
+  },
+});
+
+export function loadSettings(): AppSettings {
+  return settingsStore.store;
+}
+
+export function saveSettings(settings: AppSettings): void {
+  settingsStore.store = settings;
+}
 
 export function loadProjects(): Project[] {
   return projectsStore.get("projects");

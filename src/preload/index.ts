@@ -12,6 +12,7 @@ import type {
   AssignActivityInput,
   DateRange,
   HistoricalState,
+  AppSettings,
 } from "../shared/types.js";
 
 type TrackingListener = (state: TrackingState) => void;
@@ -55,6 +56,33 @@ const api = {
 
   createProjectFromActivity: (input: CreateProjectFromActivityInput): Promise<Project> =>
     ipcRenderer.invoke("create-project-from-activity", input),
+
+  exportData: (
+    format: "csv" | "json",
+    range: DateRange,
+  ): Promise<{ success: boolean; filePath?: string }> =>
+    ipcRenderer.invoke("export-data", { format, range }),
+
+  getSettings: (): Promise<AppSettings> => ipcRenderer.invoke("get-settings"),
+
+  updateSettings: (partial: Partial<AppSettings>): Promise<AppSettings> =>
+    ipcRenderer.invoke("update-settings", partial),
+
+  resolveIdle: (
+    choice: "discard" | "keep" | "assign",
+    projectId?: string,
+  ): Promise<void> => ipcRenderer.invoke("resolve-idle", { choice, projectId }),
+
+  onIdleReturned: (
+    listener: (data: { idleDurationSeconds: number }) => void,
+  ): (() => void) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      data: { idleDurationSeconds: number },
+    ): void => listener(data);
+    ipcRenderer.on("idle-returned", handler);
+    return () => ipcRenderer.off("idle-returned", handler);
+  },
 
   onTrackingUpdate: (listener: TrackingListener): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, state: TrackingState): void => listener(state);

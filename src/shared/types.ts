@@ -94,4 +94,14 @@ export interface HistoricalState {
   endDate: string;
 }
 
+export interface IdleSettings {
+  enabled: boolean;
+  timeoutMinutes: number;
+}
+
+export interface AppSettings {
+  trackingIntervalMs: number;
+  idle: IdleSettings;
+}
+
 export const activityKey = (app: string, title: string): string => `${app}::${title}`;

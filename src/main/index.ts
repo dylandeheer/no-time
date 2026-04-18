@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Tray, ipcMain, nativeImage } from "electron";
+import { app, BrowserWindow, Tray, ipcMain, nativeImage, dialog } from "electron";
 import path from "node:path";
+import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { nanoid } from "nanoid";
 import { MatchCache } from "./matching.js";
@@ -12,6 +13,8 @@ import {
   saveOverrides,
   loadTracking,
   saveTracking,
+  loadSettings,
+  saveSettings,
   todayKey,
   getDateRangeBounds,
   getTrackingForRange,
@@ -33,6 +36,7 @@ import type {
   DateRange,
   HistoricalActivity,
   HistoricalState,
+  AppSettings,
 } from "@shared/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,6 +54,12 @@ let currentActivity: CurrentActivity | null = null;
 const cache = new MatchCache();
 let trackingDirty = false;
 let isPaused = false;
+
+let settings: AppSettings;
+let lastActivityKey = "";
+let lastActivityChangeTime = Date.now();
+let isIdle = false;
+let idleStartTime: number | null = null;
 
 function buildTrackingState(): TrackingState {
   const today = todayKey();
@@ -142,6 +152,35 @@ async function trackLoop(): Promise<void> {
       const app = win.owner.name;
       const title = win.title;
       const key = activityKey(app, title);
+
+      // Idle detection
+      if (key !== lastActivityKey) {
+        lastActivityKey = key;
+        lastActivityChangeTime = Date.now();
+
+        if (isIdle) {
+          // User returned from idle
+          const idleDuration = Math.floor(
+            (Date.now() - (idleStartTime ?? Date.now())) / 1000,
+          );
+          isIdle = false;
+          idleStartTime = null;
+          dashboard?.webContents.send("idle-returned", {
+            idleDurationSeconds: idleDuration,
+          });
+        }
+      }
+
+      if (settings.idle.enabled && !isIdle) {
+        const elapsed = Date.now() - lastActivityChangeTime;
+        if (elapsed > settings.idle.timeoutMinutes * 60 * 1000) {
+          isIdle = true;
+          idleStartTime = Date.now() - elapsed;
+          return;
+        }
+      }
+
+      if (isIdle) return; // skip time increment while idle
 
       const today = todayKey();
       if (!trackingDays[today]) trackingDays[today] = {};
@@ -408,6 +447,122 @@ function registerIpc(): void {
       return project;
     },
   );
+
+  ipcMain.handle(
+    "export-data",
+    async (
+      _e,
+      { format, range }: { format: "csv" | "json"; range: DateRange },
+    ): Promise<{ success: boolean; filePath?: string }> => {
+      const ext = format === "csv" ? "csv" : "json";
+      const result = await dialog.showSaveDialog({
+        title: "Export Data",
+        defaultPath: `no-time-export.${ext}`,
+        filters: [
+          format === "csv"
+            ? { name: "CSV Files", extensions: ["csv"] }
+            : { name: "JSON Files", extensions: ["json"] },
+        ],
+      });
+
+      if (result.canceled || !result.filePath) return { success: false };
+
+      const { start, end } = getDateRangeBounds(range);
+      const rangeDays = getTrackingForRange(trackingDays, start, end);
+
+      const projectMap = new Map(projects.map((p) => [p.id, p]));
+
+      interface ActivityRow {
+        date: string;
+        app: string;
+        title: string;
+        projectName: string;
+        seconds: number;
+      }
+
+      const rows: ActivityRow[] = [];
+      for (const [day, entries] of Object.entries(rangeDays)) {
+        for (const [key, seconds] of Object.entries(entries)) {
+          const [appName, title] = key.split("::");
+          if (!appName || title === undefined) continue;
+
+          const match = cache.get(appName, title, { rules, overrides });
+          const project = match.projectId ? projectMap.get(match.projectId) : undefined;
+          rows.push({
+            date: day,
+            app: appName,
+            title,
+            projectName: project?.name ?? "",
+            seconds,
+          });
+        }
+      }
+
+      let content: string;
+      if (format === "csv") {
+        const csvEscape = (val: string): string => {
+          if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+            return `"${val.replace(/"/g, '""')}"`;
+          }
+          return val;
+        };
+        const header = "date,app,title,project,seconds";
+        const lines = rows.map(
+          (r) =>
+            `${csvEscape(r.date)},${csvEscape(r.app)},${csvEscape(r.title)},${csvEscape(r.projectName)},${r.seconds}`,
+        );
+        content = [header, ...lines].join("\n");
+      } else {
+        content = JSON.stringify(
+          {
+            exportDate: new Date().toISOString(),
+            dateRange: range,
+            startDate: start,
+            endDate: end,
+            projects,
+            rules,
+            activities: rows,
+          },
+          null,
+          2,
+        );
+      }
+
+      try {
+        await fs.writeFile(result.filePath, content, "utf-8");
+        return { success: true, filePath: result.filePath };
+      } catch {
+        return { success: false };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "resolve-idle",
+    (
+      _e,
+      { choice }: { choice: "discard" | "keep" | "assign"; projectId?: string },
+    ): void => {
+      // discard: do nothing (time already not tracked)
+      // keep / assign: acknowledged by renderer
+      void choice;
+    },
+  );
+
+  ipcMain.handle("get-settings", (): AppSettings => settings);
+
+  ipcMain.handle(
+    "update-settings",
+    (_e, partial: Partial<AppSettings>): AppSettings => {
+      settings = {
+        ...settings,
+        ...partial,
+        idle: { ...settings.idle, ...(partial.idle ?? {}) },
+      };
+      saveSettings(settings);
+      return settings;
+    },
+  );
 }
 
 app.whenReady().then(async () => {
@@ -415,6 +570,7 @@ app.whenReady().then(async () => {
   rules = loadRules();
   overrides = loadOverrides();
   trackingDays = loadTracking();
+  settings = loadSettings();
 
   if (process.platform === "darwin" && app.dock) {
     const dockIcon = nativeImage.createFromPath(
