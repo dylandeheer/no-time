@@ -84,6 +84,14 @@ const api = {
     return () => ipcRenderer.off("idle-returned", handler);
   },
 
+  clearTodayData: (): Promise<void> => ipcRenderer.invoke("clear-today-data"),
+
+  clearAllData: (): Promise<void> => ipcRenderer.invoke("clear-all-data"),
+
+  getDataDirectory: (): Promise<string> => ipcRenderer.invoke("get-data-directory"),
+
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke("get-app-version"),
+
   onTrackingUpdate: (listener: TrackingListener): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, state: TrackingState): void => listener(state);
     ipcRenderer.on("tracking-update", handler);

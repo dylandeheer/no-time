@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Activity, FolderKanban, Pause, Play, Settings as SettingsIcon } from "lucide-react";
 import { useTrackingState } from "@renderer/hooks/useTrackingState";
 import { formatTime } from "@renderer/lib/format";
@@ -6,6 +6,7 @@ import { cn } from "@renderer/lib/utils";
 import { Toaster } from "@renderer/components/ui/sonner";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { Logo } from "@renderer/components/Logo";
+import { IdleDialog } from "@renderer/components/IdleDialog";
 import { ActivitiesView } from "./views/ActivitiesView";
 import { ProjectsView } from "./views/ProjectsView";
 import { ProjectDetailView } from "./views/ProjectDetailView";
@@ -17,6 +18,13 @@ export function App() {
   const state = useTrackingState();
   const [view, setView] = useState<View>("projects");
   const [detailProjectId, setDetailProjectId] = useState<string | null>(null);
+  const [idleData, setIdleData] = useState<{ idleDurationSeconds: number } | null>(null);
+
+  useEffect(() => {
+    return window.electronAPI.onIdleReturned((data) => {
+      setIdleData(data);
+    });
+  }, []);
 
   const openProjectDetail = (id: string) => {
     setDetailProjectId(id);
@@ -122,6 +130,16 @@ export function App() {
           {view === "settings" && <SettingsView />}
         </main>
       </div>
+
+      <IdleDialog
+        open={idleData !== null}
+        idleDurationSeconds={idleData?.idleDurationSeconds ?? 0}
+        projects={state.projects}
+        onResolve={(choice, projectId) => {
+          window.electronAPI.resolveIdle(choice, projectId);
+          setIdleData(null);
+        }}
+      />
 
       <Toaster position="bottom-right" />
     </TooltipProvider>

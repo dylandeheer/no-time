@@ -563,6 +563,29 @@ function registerIpc(): void {
       return settings;
     },
   );
+
+  ipcMain.handle("clear-today-data", (): void => {
+    const today = todayKey();
+    delete trackingDays[today];
+    saveTracking(trackingDays);
+    cache.invalidate();
+    broadcast();
+  });
+
+  ipcMain.handle("clear-all-data", (): void => {
+    trackingDays = {};
+    saveTracking(trackingDays);
+    cache.invalidate();
+    broadcast();
+  });
+
+  ipcMain.handle("get-data-directory", (): string => {
+    return app.getPath("userData");
+  });
+
+  ipcMain.handle("get-app-version", (): string => {
+    return app.getVersion();
+  });
 }
 
 app.whenReady().then(async () => {
