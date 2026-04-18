@@ -12,24 +12,28 @@ const LOGO_PATH = "M12.78 22.08L8.79003 13.7428C8.77168 13.7044 8.73294 13.68 8.
 const O_PATH = "M77.5 0C67.2827 0 59 8.28273 59 18.5V23.5C59 33.7173 67.2827 42 77.5 42C87.7173 42 96 33.7173 96 23.5V18.5C96 8.28273 87.7173 0 77.5 0ZM77.5 7C71.1487 7 66 12.1487 66 18.5V23.5C66 29.8513 71.1487 35 77.5 35C83.8513 35 89 29.8513 89 23.5V18.5C89 12.1487 83.8513 7 77.5 7Z";
 
 /**
- * Square app icon SVG: dark rounded-square background with the logo centered.
- * Background: zinc-950 (#09090b) with a subtle violet glow, matching the app theme.
+ * macOS app icon, using Apple's icon grid. A 1024×1024 canvas has ~100px
+ * of transparent padding on each side and the visible squircle fills the
+ * inner 824×824 area with ~22.5% corner radius. That lets macOS scale and
+ * shadow it consistently alongside other apps in the Dock / Launchpad.
  */
 function appIconSvg(size) {
-  const radius = Math.round(size * 0.225);
-  const logoWidth = Math.round(size * 0.66);
-  const logoHeight = Math.round((logoWidth * 42) / 96);
-  const logoX = Math.round((size - logoWidth) / 2);
-  const logoY = Math.round((size - logoHeight) / 2);
+  const margin = size * (100 / 1024);
+  const inner = size - margin * 2;
+  const radius = inner * 0.225;
+  const logoWidth = inner * 0.62;
+  const logoHeight = (logoWidth * 42) / 96;
+  const logoX = (size - logoWidth) / 2;
+  const logoY = (size - logoHeight) / 2;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
   <defs>
-    <radialGradient id="g" cx="50%" cy="35%" r="75%">
-      <stop offset="0%" stop-color="#1f1530"/>
-      <stop offset="60%" stop-color="#0d0b12"/>
+    <radialGradient id="g" cx="50%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="#241a38"/>
+      <stop offset="55%" stop-color="#0e0b14"/>
       <stop offset="100%" stop-color="#050507"/>
     </radialGradient>
   </defs>
-  <rect width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="url(#g)"/>
+  <rect x="${margin}" y="${margin}" width="${inner}" height="${inner}" rx="${radius}" ry="${radius}" fill="url(#g)"/>
   <g transform="translate(${logoX} ${logoY}) scale(${logoWidth / 96})">
     <path d="${LOGO_PATH}" fill="#ffffff"/>
     <circle cx="47" cy="12" r="5" fill="#FF3E54"/>
@@ -40,20 +44,15 @@ function appIconSvg(size) {
 }
 
 /**
- * macOS template tray icon: all-black on transparency. macOS inverts
- * automatically based on menu bar appearance.
+ * macOS template tray icon: a simple filled "recording" dot on transparency.
+ * Template images must be pure black; macOS inverts per the menu bar theme.
  */
 function trayIconSvg(width, height) {
-  const scale = height / 42;
-  const logoWidth = 96 * scale;
-  const x = (width - logoWidth) / 2;
+  const cx = width / 2;
+  const cy = height / 2;
+  const r = Math.min(width, height) * 0.35;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <g transform="translate(${x} 0) scale(${scale})">
-    <path d="${LOGO_PATH}" fill="#000000"/>
-    <circle cx="47" cy="12" r="5" fill="#000000"/>
-    <circle cx="47" cy="30" r="5" fill="#000000"/>
-    <path fill-rule="evenodd" clip-rule="evenodd" d="${O_PATH}" fill="#000000"/>
-  </g>
+  <circle cx="${cx}" cy="${cy}" r="${r}" fill="#000000"/>
 </svg>`;
 }
 
@@ -77,15 +76,11 @@ async function main() {
   await writeFile(path.join(ASSETS, "icon.svg"), masterSvg);
   await renderPng(masterSvg, path.join(ASSETS, "icon.png"), { width: 1024, height: 1024 });
 
-  // Tray template icons. Wider than tall so the "N:O" wordmark stays legible.
-  const trayW1 = 41;
-  const trayH1 = 18;
-  const traySvg1 = trayIconSvg(trayW1, trayH1);
-  await renderPng(traySvg1, path.join(ASSETS, "iconTemplate.png"), { width: trayW1, height: trayH1 });
-  const trayW2 = 82;
-  const trayH2 = 36;
-  const traySvg2 = trayIconSvg(trayW2, trayH2);
-  await renderPng(traySvg2, path.join(ASSETS, "iconTemplate@2x.png"), { width: trayW2, height: trayH2 });
+  // Tray template icons at the standard menu-bar size.
+  const traySvg1 = trayIconSvg(22, 18);
+  await renderPng(traySvg1, path.join(ASSETS, "iconTemplate.png"), { width: 22, height: 18 });
+  const traySvg2 = trayIconSvg(44, 36);
+  await renderPng(traySvg2, path.join(ASSETS, "iconTemplate@2x.png"), { width: 44, height: 36 });
 }
 
 main().catch((err) => {
