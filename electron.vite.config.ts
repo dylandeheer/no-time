@@ -26,11 +26,11 @@ export default defineConfig({
       lib: {
         entry: path.resolve(__dirname, "src/preload/index.ts"),
         formats: ["cjs"],
-        fileName: () => "index.js",
+        fileName: () => "index.cjs",
       },
       rollupOptions: {
         output: {
-          entryFileNames: "index.js",
+          entryFileNames: "index.cjs",
         },
       },
     },
