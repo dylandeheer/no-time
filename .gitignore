@@ -1,3 +1,9 @@
 node_modules
-.cache
+out
 dist
+.vite
+.parcel-cache
+.cache
+.env
+.DS_Store
+*.log
