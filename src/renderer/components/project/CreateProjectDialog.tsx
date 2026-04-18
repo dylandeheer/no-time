@@ -48,7 +48,10 @@ export function CreateProjectDialog({
       setColor(nextColor(usedColors));
       setAutoRule(true);
     }
-  }, [open, defaultName, usedColors]);
+    // Only reset on open transition; usedColors/defaultName change on every
+    // tracking tick and would otherwise wipe the user's input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (autoRule) setRulePattern(name);
