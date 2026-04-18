@@ -41,6 +41,7 @@ export interface TrackingState {
   rules: Rule[];
   currentActivity: CurrentActivity | null;
   totalTodaySeconds: number;
+  isPaused: boolean;
 }
 
 export interface CreateProjectInput {
@@ -73,6 +74,24 @@ export interface CreateProjectFromActivityInput {
 export interface AssignActivityInput {
   activityKey: string;
   projectId: ProjectId;
+}
+
+export type DateRange = "today" | "week" | "month" | "all";
+
+export interface HistoricalActivity {
+  app: string;
+  title: string;
+  totalTime: number;
+  projectId: ProjectId | null;
+  assignedBy: AssignedBy;
+}
+
+export interface HistoricalState {
+  activities: Record<string, HistoricalActivity>;
+  totalSeconds: number;
+  dateRange: DateRange;
+  startDate: string;
+  endDate: string;
 }
 
 export const activityKey = (app: string, title: string): string => `${app}::${title}`;

@@ -64,3 +64,42 @@ export function todayKey(): string {
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+
+function formatDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+export function getDateRangeBounds(range: "today" | "week" | "month" | "all"): { start: string; end: string } {
+  const now = new Date();
+  const end = formatDateKey(now);
+
+  if (range === "today") return { start: end, end };
+
+  if (range === "week") {
+    const start = new Date(now);
+    start.setDate(start.getDate() - start.getDay());
+    return { start: formatDateKey(start), end };
+  }
+
+  if (range === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { start: formatDateKey(start), end };
+  }
+
+  return { start: "0000-00-00", end };
+}
+
+export function getTrackingForRange(
+  days: Record<string, Record<string, number>>,
+  start: string,
+  end: string,
+): Record<string, Record<string, number>> {
+  const result: Record<string, Record<string, number>> = {};
+  for (const [day, entries] of Object.entries(days)) {
+    if (day >= start && day <= end) result[day] = entries;
+  }
+  return result;
+}

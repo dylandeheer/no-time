@@ -7,6 +7,7 @@ const EMPTY_STATE: TrackingState = {
   rules: [],
   currentActivity: null,
   totalTodaySeconds: 0,
+  isPaused: false,
 };
 
 export function useTrackingState(): TrackingState {

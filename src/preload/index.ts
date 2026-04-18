@@ -10,6 +10,8 @@ import type {
   UpdateRuleInput,
   CreateProjectFromActivityInput,
   AssignActivityInput,
+  DateRange,
+  HistoricalState,
 } from "../shared/types.js";
 
 type TrackingListener = (state: TrackingState) => void;
@@ -18,6 +20,11 @@ const api = {
   getState: (): Promise<TrackingState> => ipcRenderer.invoke("get-state"),
 
   openDashboard: (): Promise<void> => ipcRenderer.invoke("open-dashboard"),
+
+  togglePause: (): Promise<boolean> => ipcRenderer.invoke("toggle-pause"),
+
+  getHistoricalState: (range: DateRange): Promise<HistoricalState> =>
+    ipcRenderer.invoke("get-historical-state", range),
 
   createProject: (input: CreateProjectInput): Promise<Project> =>
     ipcRenderer.invoke("create-project", input),

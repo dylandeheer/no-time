@@ -13,6 +13,8 @@ import {
   loadTracking,
   saveTracking,
   todayKey,
+  getDateRangeBounds,
+  getTrackingForRange,
 } from "./storage.js";
 import { activityKey } from "@shared/types";
 import type {
@@ -28,6 +30,9 @@ import type {
   UpdateRuleInput,
   CreateProjectFromActivityInput,
   AssignActivityInput,
+  DateRange,
+  HistoricalActivity,
+  HistoricalState,
 } from "@shared/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +49,7 @@ let currentActivity: CurrentActivity | null = null;
 
 const cache = new MatchCache();
 let trackingDirty = false;
+let isPaused = false;
 
 function buildTrackingState(): TrackingState {
   const today = todayKey();
@@ -74,6 +80,7 @@ function buildTrackingState(): TrackingState {
     rules,
     currentActivity,
     totalTodaySeconds,
+    isPaused,
   };
 }
 
@@ -83,12 +90,49 @@ function broadcast(): void {
   widget?.webContents.send("tracking-update", state);
 }
 
+function buildHistoricalState(range: DateRange): HistoricalState {
+  const { start, end } = getDateRangeBounds(range);
+  const rangeDays = getTrackingForRange(trackingDays, start, end);
+
+  const aggregated = new Map<string, number>();
+  for (const dayEntries of Object.values(rangeDays)) {
+    for (const [key, time] of Object.entries(dayEntries)) {
+      aggregated.set(key, (aggregated.get(key) ?? 0) + time);
+    }
+  }
+
+  const activities: Record<string, HistoricalActivity> = {};
+  let totalSeconds = 0;
+
+  for (const [key, totalTime] of aggregated) {
+    const [appName, title] = key.split("::");
+    if (!appName || title === undefined) continue;
+
+    const match = cache.get(appName, title, { rules, overrides });
+    activities[key] = {
+      app: appName,
+      title,
+      totalTime,
+      projectId: match.projectId,
+      assignedBy: match.assignedBy,
+    };
+    totalSeconds += totalTime;
+  }
+
+  return { activities, totalSeconds, dateRange: range, startDate: start, endDate: end };
+}
+
 async function trackLoop(): Promise<void> {
   const activeWinModule = await import("active-win");
   const activeWindow = activeWinModule.default;
 
   setInterval(async () => {
     try {
+      if (isPaused) {
+        broadcast();
+        return;
+      }
+
       const win = await activeWindow();
       if (!win || !win.owner || !win.title) {
         currentActivity = null;
@@ -209,6 +253,16 @@ function makeDashboard(): void {
 
 function registerIpc(): void {
   ipcMain.handle("get-state", () => buildTrackingState());
+
+  ipcMain.handle("toggle-pause", (): boolean => {
+    isPaused = !isPaused;
+    broadcast();
+    return isPaused;
+  });
+
+  ipcMain.handle("get-historical-state", (_e, range: DateRange): HistoricalState => {
+    return buildHistoricalState(range);
+  });
 
   ipcMain.handle("open-dashboard", () => {
     widget?.hide();

@@ -12,6 +12,16 @@ import {
   DropdownMenuSeparator,
 } from "@renderer/components/ui/dropdown-menu";
 import { Popover, PopoverTrigger, PopoverContent } from "@renderer/components/ui/popover";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@renderer/components/ui/alert-dialog";
 import { Badge } from "@renderer/components/ui/badge";
 import { PROJECT_COLORS } from "@renderer/lib/colors";
 import { formatTime } from "@renderer/lib/format";
@@ -22,16 +32,19 @@ interface Props {
   project: Project;
   rules: Rule[];
   activities: Activity[];
+  rangeTime?: number;
+  rangeLabel?: string;
   onOpen?: () => void;
 }
 
-export function ProjectCard({ project, rules, activities, onOpen }: Props) {
+export function ProjectCard({ project, rules, activities, rangeTime, rangeLabel, onOpen }: Props) {
   const projectRules = rules.filter((r) => r.projectId === project.id);
   const todayTime = activities.reduce((sum, a) => sum + a.time, 0);
   const activityCount = activities.length;
 
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(project.name);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const saveName = async () => {
@@ -163,7 +176,7 @@ export function ProjectCard({ project, rules, activities, onOpen }: Props) {
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDelete();
+                  setDeleteConfirmOpen(true);
                 }}
                 className="text-destructive focus:text-destructive"
               >
@@ -183,6 +196,16 @@ export function ProjectCard({ project, rules, activities, onOpen }: Props) {
             {formatTime(todayTime)}
           </div>
         </div>
+        {rangeTime !== undefined && rangeLabel && (
+          <div>
+            <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              {rangeLabel}
+            </div>
+            <div className="font-mono text-lg font-light tabular-nums text-muted-foreground">
+              {formatTime(rangeTime)}
+            </div>
+          </div>
+        )}
       </div>
 
       {projectRules.length > 0 && (
@@ -202,6 +225,27 @@ export function ProjectCard({ project, rules, activities, onOpen }: Props) {
         {activityCount} {activityCount === 1 ? "activity" : "activities"} ·{" "}
         {projectRules.length} {projectRules.length === 1 ? "rule" : "rules"}
       </div>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete &quot;{project.name}&quot; and all its rules. Activities
+              will become uncategorized. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDelete}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

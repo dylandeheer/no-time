@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Activity, FolderKanban, Settings as SettingsIcon } from "lucide-react";
+import { Activity, FolderKanban, Pause, Play, Settings as SettingsIcon } from "lucide-react";
 import { useTrackingState } from "@renderer/hooks/useTrackingState";
 import { formatTime } from "@renderer/lib/format";
 import { cn } from "@renderer/lib/utils";
@@ -67,15 +67,43 @@ export function App() {
           </nav>
 
           <div className="border-t border-border p-4">
-            <div className="mb-1 text-xs text-muted-foreground">Today</div>
-            <div className="font-mono text-2xl font-light tabular-nums">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Today</span>
+              <button
+                onClick={() => window.electronAPI.togglePause()}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                  state.isPaused
+                    ? "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25"
+                    : "bg-primary/10 text-primary hover:bg-primary/20",
+                )}
+              >
+                {state.isPaused ? (
+                  <>
+                    <Play className="h-3 w-3" />
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    <Pause className="h-3 w-3" />
+                    Pause
+                  </>
+                )}
+              </button>
+            </div>
+            <div className={cn(
+              "font-mono text-2xl font-light tabular-nums",
+              state.isPaused && "text-muted-foreground",
+            )}>
               {formatTime(state.totalTodaySeconds)}
             </div>
-            {state.currentActivity && (
+            {state.isPaused ? (
+              <div className="mt-3 text-xs font-medium text-amber-400">Paused</div>
+            ) : state.currentActivity ? (
               <div className="mt-3 truncate text-xs text-muted-foreground">
                 {state.currentActivity.app}
               </div>
-            )}
+            ) : null}
           </div>
         </aside>
 

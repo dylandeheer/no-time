@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import type { Activity, TrackingState } from "@shared/types";
+import type { Activity, TrackingState, DateRange, HistoricalState } from "@shared/types";
 import { Button } from "@renderer/components/ui/button";
 import { ProjectCard } from "@renderer/components/project/ProjectCard";
 import { CreateProjectDialog } from "@renderer/components/project/CreateProjectDialog";
+import { DateRangeSelector } from "@renderer/components/DateRangeSelector";
 import { formatTime } from "@renderer/lib/format";
 
 interface Props {
@@ -13,6 +14,16 @@ interface Props {
 
 export function ProjectsView({ state, onOpenProject }: Props) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>("today");
+  const [historicalState, setHistoricalState] = useState<HistoricalState | null>(null);
+
+  useEffect(() => {
+    if (dateRange === "today") {
+      setHistoricalState(null);
+      return;
+    }
+    window.electronAPI.getHistoricalState(dateRange).then(setHistoricalState);
+  }, [dateRange]);
 
   const activitiesByProject = useMemo(() => {
     const map = new Map<string, Activity[]>();
@@ -25,9 +36,24 @@ export function ProjectsView({ state, onOpenProject }: Props) {
     return map;
   }, [state.activities]);
 
+  const rangeTimeByProject = useMemo(() => {
+    if (!historicalState) return null;
+    const map = new Map<string, number>();
+    for (const a of Object.values(historicalState.activities)) {
+      const key = a.projectId ?? "__unassigned__";
+      map.set(key, (map.get(key) ?? 0) + a.totalTime);
+    }
+    return map;
+  }, [historicalState]);
+
   const unassigned = activitiesByProject.get("__unassigned__") ?? [];
   const unassignedTime = unassigned.reduce((sum, a) => sum + a.time, 0);
   const usedColors = state.projects.map((p) => p.color);
+
+  const rangeLabel =
+    dateRange === "week" ? "This week" :
+    dateRange === "month" ? "This month" :
+    dateRange === "all" ? "All time" : null;
 
   return (
     <div className="p-10">
@@ -38,10 +64,13 @@ export function ProjectsView({ state, onOpenProject }: Props) {
             Activities are automatically grouped into projects based on rules.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" />
-          New project
-        </Button>
+        <div className="flex items-center gap-3">
+          <DateRangeSelector value={dateRange} onChange={setDateRange} />
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            New project
+          </Button>
+        </div>
       </header>
 
       {state.projects.length === 0 ? (
@@ -63,6 +92,8 @@ export function ProjectsView({ state, onOpenProject }: Props) {
               project={project}
               rules={state.rules}
               activities={activitiesByProject.get(project.id) ?? []}
+              rangeTime={rangeTimeByProject?.get(project.id)}
+              rangeLabel={rangeLabel ?? undefined}
               onOpen={() => onOpenProject(project.id)}
             />
           ))}
