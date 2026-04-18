@@ -52,9 +52,16 @@ export function SettingsView() {
   };
 
   const handleExport = async (format: "csv" | "json") => {
-    const result = await window.electronAPI.exportData(format, exportRange);
-    if (result.success) {
-      toast.success(`Exported to ${result.filePath}`);
+    try {
+      const result = await window.electronAPI.exportData(format, exportRange);
+      if (result.success) {
+        toast.success(`Exported to ${result.filePath}`);
+      } else {
+        toast.error("Export cancelled");
+      }
+    } catch (err) {
+      console.error("Export failed:", err);
+      toast.error("Export failed");
     }
   };
 

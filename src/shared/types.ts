@@ -20,12 +20,15 @@ export interface Rule {
 
 export type AssignedBy = "rule" | "manual" | "none";
 
-export interface Activity {
+export interface ActivitySummary {
   app: string;
   title: string;
   time: number;
   projectId: ProjectId | null;
   assignedBy: AssignedBy;
+}
+
+export interface Activity extends ActivitySummary {
   lastSeen: number;
 }
 
@@ -111,3 +114,9 @@ export interface AppSettings {
 }
 
 export const activityKey = (app: string, title: string): string => `${app}::${title}`;
+
+export function parseActivityKey(key: string): { app: string; title: string } | null {
+  const idx = key.indexOf("::");
+  if (idx <= 0) return null;
+  return { app: key.slice(0, idx), title: key.slice(idx + 2) };
+}

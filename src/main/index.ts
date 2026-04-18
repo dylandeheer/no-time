@@ -19,7 +19,7 @@ import {
   getDateRangeBounds,
   getTrackingForRange,
 } from "./storage.js";
-import { activityKey } from "@shared/types";
+import { activityKey, parseActivityKey } from "@shared/types";
 import type {
   Project,
   Rule,
@@ -59,6 +59,7 @@ let settings: AppSettings;
 let lastActivityKey = "";
 let lastActivityChangeTime = Date.now();
 let isIdle = false;
+let trackingIntervalId: ReturnType<typeof setInterval> | null = null;
 
 function buildTrackingState(): TrackingState {
   const today = todayKey();
@@ -68,13 +69,13 @@ function buildTrackingState(): TrackingState {
   let totalTodaySeconds = 0;
 
   for (const [key, time] of Object.entries(todayData)) {
-    const [appName, title] = key.split("::");
-    if (!appName || title === undefined) continue;
+    const parsed = parseActivityKey(key);
+    if (!parsed) continue;
 
-    const match = cache.get(appName, title, { rules, overrides });
+    const match = cache.get(parsed.app, parsed.title, { rules, overrides });
     activities[key] = {
-      app: appName,
-      title,
+      app: parsed.app,
+      title: parsed.title,
       time,
       projectId: match.projectId,
       assignedBy: match.assignedBy,
@@ -114,13 +115,13 @@ function buildHistoricalState(range: DateRange): HistoricalState {
   let totalSeconds = 0;
 
   for (const [key, totalTime] of aggregated) {
-    const [appName, title] = key.split("::");
-    if (!appName || title === undefined) continue;
+    const parsed = parseActivityKey(key);
+    if (!parsed) continue;
 
-    const match = cache.get(appName, title, { rules, overrides });
+    const match = cache.get(parsed.app, parsed.title, { rules, overrides });
     activities[key] = {
-      app: appName,
-      title,
+      app: parsed.app,
+      title: parsed.title,
       totalTime,
       projectId: match.projectId,
       assignedBy: match.assignedBy,
@@ -135,7 +136,9 @@ async function trackLoop(): Promise<void> {
   const activeWinModule = await import("active-win");
   const activeWindow = activeWinModule.default;
 
-  setInterval(async () => {
+  const intervalSeconds = Math.round(settings.trackingIntervalMs / 1000);
+
+  trackingIntervalId = setInterval(async () => {
     try {
       if (isPaused) {
         broadcast();
@@ -170,7 +173,7 @@ async function trackLoop(): Promise<void> {
         const idleKey = activityKey("Idle", "Idle");
         const today = todayKey();
         if (!trackingDays[today]) trackingDays[today] = {};
-        trackingDays[today][idleKey] = (trackingDays[today][idleKey] ?? 0) + 1;
+        trackingDays[today][idleKey] = (trackingDays[today][idleKey] ?? 0) + intervalSeconds;
         trackingDirty = true;
         broadcast();
         return;
@@ -178,7 +181,7 @@ async function trackLoop(): Promise<void> {
 
       const today = todayKey();
       if (!trackingDays[today]) trackingDays[today] = {};
-      trackingDays[today][key] = (trackingDays[today][key] ?? 0) + 1;
+      trackingDays[today][key] = (trackingDays[today][key] ?? 0) + intervalSeconds;
       trackingDirty = true;
 
       const match = cache.get(app, title, { rules, overrides });
@@ -188,7 +191,7 @@ async function trackLoop(): Promise<void> {
     } catch (err) {
       console.error("Tracking error:", err);
     }
-  }, 1000);
+  }, settings.trackingIntervalMs);
 
   setInterval(() => {
     if (trackingDirty) {
@@ -240,7 +243,8 @@ function makeWidget(): void {
   });
 
   try {
-    const iconPath = path.join(process.cwd(), "assets/iconTemplate.png");
+    const iconBasePath = app.isPackaged ? process.resourcesPath : app.getAppPath();
+    const iconPath = path.join(iconBasePath, "assets/iconTemplate.png");
     const icon = nativeImage.createFromPath(iconPath);
     tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
     tray.setIgnoreDoubleClickEvents(true);
@@ -269,7 +273,7 @@ function makeDashboard(): void {
     show: false,
     backgroundColor: "#0a0a0b",
     titleBarStyle: "hiddenInset",
-    icon: path.join(process.cwd(), "assets/icon.png"),
+    icon: path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), "assets/icon.png"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -487,15 +491,15 @@ function registerIpc(): void {
       const rows: ActivityRow[] = [];
       for (const [day, entries] of Object.entries(rangeDays)) {
         for (const [key, seconds] of Object.entries(entries)) {
-          const [appName, title] = key.split("::");
-          if (!appName || title === undefined) continue;
+          const parsed = parseActivityKey(key);
+          if (!parsed) continue;
 
-          const match = cache.get(appName, title, { rules, overrides });
+          const match = cache.get(parsed.app, parsed.title, { rules, overrides });
           const project = match.projectId ? projectMap.get(match.projectId) : undefined;
           rows.push({
             date: day,
-            app: appName,
-            title,
+            app: parsed.app,
+            title: parsed.title,
             projectName: project?.name ?? "",
             seconds,
           });
@@ -546,12 +550,17 @@ function registerIpc(): void {
   ipcMain.handle(
     "update-settings",
     (_e, partial: Partial<AppSettings>): AppSettings => {
+      const prevInterval = settings.trackingIntervalMs;
       settings = {
         ...settings,
         ...partial,
         idle: { ...settings.idle, ...(partial.idle ?? {}) },
       };
       saveSettings(settings);
+      if (partial.trackingIntervalMs && partial.trackingIntervalMs !== prevInterval && trackingIntervalId) {
+        clearInterval(trackingIntervalId);
+        trackLoop();
+      }
       return settings;
     },
   );

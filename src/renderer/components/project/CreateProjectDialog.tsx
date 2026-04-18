@@ -135,7 +135,7 @@ export function CreateProjectDialog({
                   type="checkbox"
                   checked={autoRule}
                   onChange={(e) => setAutoRule(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-[color:var(--primary)]"
+                  className="h-3.5 w-3.5 accent-[var(--primary)]"
                 />
                 Auto-match windows containing this keyword
               </label>

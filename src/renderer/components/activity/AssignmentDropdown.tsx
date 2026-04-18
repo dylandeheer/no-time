@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, ChevronDown, X } from "lucide-react";
-import type { Activity, Project } from "@shared/types";
+import type { ActivitySummary, Project } from "@shared/types";
 import {
   Popover,
   PopoverTrigger,
@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { activityKey as makeKey } from "@shared/types";
 
 interface Props {
-  activity: Activity;
+  activity: ActivitySummary;
   project: Project | null;
   projects: Project[];
 }

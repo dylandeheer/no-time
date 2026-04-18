@@ -1,19 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Activity, Project, TrackingState, DateRange, HistoricalState } from "@shared/types";
+import type { ActivitySummary, Project, TrackingState, DateRange, HistoricalState } from "@shared/types";
 import { ProjectGroup } from "@renderer/components/activity/ProjectGroup";
 import { UncategorizedBanner } from "@renderer/components/activity/UncategorizedBanner";
 import { DateRangeSelector } from "@renderer/components/DateRangeSelector";
 
 interface Props {
   state: TrackingState;
-}
-
-interface NormalizedActivity {
-  app: string;
-  title: string;
-  time: number;
-  projectId: string | null;
-  assignedBy: "rule" | "manual" | "none";
 }
 
 export function ActivitiesView({ state }: Props) {
@@ -29,7 +21,7 @@ export function ActivitiesView({ state }: Props) {
     window.electronAPI.getHistoricalState(dateRange).then(setHistoricalState);
   }, [dateRange]);
 
-  const normalized: NormalizedActivity[] = useMemo(() => {
+  const normalized: ActivitySummary[] = useMemo(() => {
     if (dateRange === "today") {
       return Object.values(state.activities).map((a) => ({
         app: a.app,
@@ -50,8 +42,8 @@ export function ActivitiesView({ state }: Props) {
   }, [dateRange, state.activities, historicalState]);
 
   const { groups, unassigned } = useMemo(() => {
-    const byProject = new Map<string, NormalizedActivity[]>();
-    const unassignedList: NormalizedActivity[] = [];
+    const byProject = new Map<string, ActivitySummary[]>();
+    const unassignedList: ActivitySummary[] = [];
 
     for (const activity of normalized) {
       if (activity.projectId === null) {
@@ -63,7 +55,7 @@ export function ActivitiesView({ state }: Props) {
       }
     }
 
-    const groups: Array<{ project: Project; activities: NormalizedActivity[] }> = [];
+    const groups: Array<{ project: Project; activities: ActivitySummary[] }> = [];
     for (const project of state.projects) {
       const list = byProject.get(project.id);
       if (list && list.length > 0) {
@@ -119,14 +111,14 @@ export function ActivitiesView({ state }: Props) {
             <ProjectGroup
               key={g.project.id}
               project={g.project}
-              activities={g.activities as Activity[]}
+              activities={g.activities }
               projects={state.projects}
             />
           ))}
 
           {unassigned.length > 0 && (
             <div ref={uncategorizedRef}>
-              <ProjectGroup project={null} activities={unassigned as Activity[]} projects={state.projects} />
+              <ProjectGroup project={null} activities={unassigned } projects={state.projects} />
             </div>
           )}
         </div>

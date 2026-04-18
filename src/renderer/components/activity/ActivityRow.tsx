@@ -1,9 +1,9 @@
-import type { Activity, Project } from "@shared/types";
+import type { ActivitySummary, Project } from "@shared/types";
 import { formatTime } from "@renderer/lib/format";
 import { AssignmentDropdown } from "./AssignmentDropdown";
 
 interface Props {
-  activity: Activity;
+  activity: ActivitySummary;
   project: Project | null;
   projects: Project[];
 }

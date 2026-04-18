@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import type { Activity, Project } from "@shared/types";
+import type { ActivitySummary, Project } from "@shared/types";
 import { formatTime } from "@renderer/lib/format";
 import { cn } from "@renderer/lib/utils";
 import { ActivityRow } from "./ActivityRow";
 
 interface Props {
   project: Project | null;
-  activities: Activity[];
+  activities: ActivitySummary[];
   projects: Project[];
   defaultOpen?: boolean;
 }
