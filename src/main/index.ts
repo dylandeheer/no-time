@@ -182,6 +182,7 @@ function makeDashboard(): void {
     show: false,
     backgroundColor: "#0a0a0b",
     titleBarStyle: "hiddenInset",
+    icon: path.join(process.cwd(), "assets/icon.png"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -360,6 +361,13 @@ app.whenReady().then(async () => {
   rules = loadRules();
   overrides = loadOverrides();
   trackingDays = loadTracking();
+
+  if (process.platform === "darwin" && app.dock) {
+    const dockIcon = nativeImage.createFromPath(
+      path.join(process.cwd(), "assets/icon.png"),
+    );
+    if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
+  }
 
   registerIpc();
   makeWidget();

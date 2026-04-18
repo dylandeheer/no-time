@@ -10,7 +10,8 @@
     "start": "electron-vite preview",
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "author": "",
   "license": "ISC",
@@ -45,6 +46,7 @@
     "eslint-plugin-react-hooks": "^5.1.0",
     "prettier": "^3.4.2",
     "prettier-plugin-tailwindcss": "^0.6.9",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.0",

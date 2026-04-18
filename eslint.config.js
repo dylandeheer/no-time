@@ -6,6 +6,16 @@ export default [
   {
     ignores: ["out/**", "dist/**", "node_modules/**", ".vite/**"],
   },
+  {
+    files: ["scripts/**/*.{js,mjs}"],
+    languageOptions: {
+      globals: {
+        Buffer: "readonly",
+        console: "readonly",
+        process: "readonly",
+      },
+    },
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
