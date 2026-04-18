@@ -12,7 +12,7 @@ export function Widget() {
     : null;
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-card p-4">
+    <div className="drag-region flex h-screen w-screen flex-col bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm font-semibold tracking-tight">No Time</div>
         <div

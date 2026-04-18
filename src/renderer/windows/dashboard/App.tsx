@@ -51,7 +51,7 @@ export function App() {
     <TooltipProvider delayDuration={200}>
       <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
         <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card/50">
-          <div className="flex items-center px-5 pt-10 pb-4">
+          <div className="drag-region flex items-center px-5 pt-10 pb-4">
             <Logo className="h-5 w-auto text-foreground" />
           </div>
 

@@ -73,6 +73,46 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+.select-text {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
+button,
+a,
+[role="button"],
+[role="menuitem"],
+[role="option"] {
+  cursor: default;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+button,
+a,
+input,
+textarea,
+select,
+[role="button"],
+[role="menuitem"],
+[role="option"],
+[data-radix-popper-content-wrapper] {
+  -webkit-app-region: no-drag;
 }
 
 *,
