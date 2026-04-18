@@ -6,7 +6,6 @@ import { cn } from "@renderer/lib/utils";
 import { Toaster } from "@renderer/components/ui/sonner";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { Logo } from "@renderer/components/Logo";
-import { IdleDialog } from "@renderer/components/IdleDialog";
 import { ActivitiesView } from "./views/ActivitiesView";
 import { ProjectsView } from "./views/ProjectsView";
 import { ProjectDetailView } from "./views/ProjectDetailView";
@@ -18,14 +17,7 @@ export function App() {
   const state = useTrackingState();
   const [view, setView] = useState<View>("projects");
   const [detailProjectId, setDetailProjectId] = useState<string | null>(null);
-  const [idleData, setIdleData] = useState<{ idleDurationSeconds: number } | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
-
-  useEffect(() => {
-    return window.electronAPI.onIdleReturned((data) => {
-      setIdleData(data);
-    });
-  }, []);
 
   useEffect(() => {
     return window.electronAPI.onUpdateDownloaded(() => {
@@ -162,16 +154,6 @@ export function App() {
           </div>
         </main>
       </div>
-
-      <IdleDialog
-        open={idleData !== null}
-        idleDurationSeconds={idleData?.idleDurationSeconds ?? 0}
-        projects={state.projects}
-        onResolve={(choice, projectId) => {
-          window.electronAPI.resolveIdle(choice, projectId);
-          setIdleData(null);
-        }}
-      />
 
       <Toaster position="bottom-right" />
     </TooltipProvider>

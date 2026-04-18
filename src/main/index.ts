@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, ipcMain, nativeImage, dialog, globalShortcut } from "electron";
+import { app, BrowserWindow, Tray, ipcMain, nativeImage, dialog, globalShortcut, screen } from "electron";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -59,7 +59,6 @@ let settings: AppSettings;
 let lastActivityKey = "";
 let lastActivityChangeTime = Date.now();
 let isIdle = false;
-let idleStartTime: number | null = null;
 
 function buildTrackingState(): TrackingState {
   const today = todayKey();
@@ -157,30 +156,25 @@ async function trackLoop(): Promise<void> {
       if (key !== lastActivityKey) {
         lastActivityKey = key;
         lastActivityChangeTime = Date.now();
-
-        if (isIdle) {
-          // User returned from idle
-          const idleDuration = Math.floor(
-            (Date.now() - (idleStartTime ?? Date.now())) / 1000,
-          );
-          isIdle = false;
-          idleStartTime = null;
-          dashboard?.webContents.send("idle-returned", {
-            idleDurationSeconds: idleDuration,
-          });
-        }
+        isIdle = false;
       }
 
       if (settings.idle.enabled && !isIdle) {
         const elapsed = Date.now() - lastActivityChangeTime;
         if (elapsed > settings.idle.timeoutMinutes * 60 * 1000) {
           isIdle = true;
-          idleStartTime = Date.now() - elapsed;
-          return;
         }
       }
 
-      if (isIdle) return; // skip time increment while idle
+      if (isIdle) {
+        const idleKey = activityKey("Idle", "Idle");
+        const today = todayKey();
+        if (!trackingDays[today]) trackingDays[today] = {};
+        trackingDays[today][idleKey] = (trackingDays[today][idleKey] ?? 0) + 1;
+        trackingDirty = true;
+        broadcast();
+        return;
+      }
 
       const today = todayKey();
       if (!trackingDays[today]) trackingDays[today] = {};
@@ -205,15 +199,24 @@ async function trackLoop(): Promise<void> {
 }
 
 function makeWidget(): void {
+  const savedPos = settings.widgetPosition;
+  const display = screen.getPrimaryDisplay();
+  const { width: screenW } = display.workAreaSize;
+  const defaultX = screenW - 320 - 40;
+  const defaultY = 40;
+
   widget = new BrowserWindow({
     width: 320,
     height: 200,
+    x: savedPos?.x ?? defaultX,
+    y: savedPos?.y ?? defaultY,
     show: false,
     frame: false,
     alwaysOnTop: true,
     fullscreenable: false,
     useContentSize: true,
     resizable: false,
+    movable: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -229,16 +232,17 @@ function makeWidget(): void {
 
   widget.loadURL(widgetUrl);
 
+  widget.on("moved", () => {
+    if (!widget) return;
+    const [x, y] = widget.getPosition();
+    settings.widgetPosition = { x, y };
+    saveSettings(settings);
+  });
+
   try {
     const iconPath = path.join(process.cwd(), "assets/iconTemplate.png");
     const icon = nativeImage.createFromPath(iconPath);
     tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-
-    const bounds = tray.getBounds();
-    widget.setPosition(
-      Math.round(bounds.x - 320 / 2 + bounds.width / 2),
-      Math.round(bounds.y + bounds.height),
-    );
     tray.setIgnoreDoubleClickEvents(true);
 
     tray.on("click", () => {
@@ -534,18 +538,6 @@ function registerIpc(): void {
       } catch {
         return { success: false };
       }
-    },
-  );
-
-  ipcMain.handle(
-    "resolve-idle",
-    (
-      _e,
-      { choice }: { choice: "discard" | "keep" | "assign"; projectId?: string },
-    ): void => {
-      // discard: do nothing (time already not tracked)
-      // keep / assign: acknowledged by renderer
-      void choice;
     },
   );
 

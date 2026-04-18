@@ -99,9 +99,15 @@ export interface IdleSettings {
   timeoutMinutes: number;
 }
 
+export interface WidgetPosition {
+  x: number;
+  y: number;
+}
+
 export interface AppSettings {
   trackingIntervalMs: number;
   idle: IdleSettings;
+  widgetPosition: WidgetPosition | null;
 }
 
 export const activityKey = (app: string, title: string): string => `${app}::${title}`;

@@ -30,6 +30,7 @@ const settingsStore = new Store<AppSettings>({
   defaults: {
     trackingIntervalMs: 1000,
     idle: { enabled: true, timeoutMinutes: 5 },
+    widgetPosition: null,
   },
 });
 

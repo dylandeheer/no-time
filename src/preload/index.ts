@@ -68,22 +68,6 @@ const api = {
   updateSettings: (partial: Partial<AppSettings>): Promise<AppSettings> =>
     ipcRenderer.invoke("update-settings", partial),
 
-  resolveIdle: (
-    choice: "discard" | "keep" | "assign",
-    projectId?: string,
-  ): Promise<void> => ipcRenderer.invoke("resolve-idle", { choice, projectId }),
-
-  onIdleReturned: (
-    listener: (data: { idleDurationSeconds: number }) => void,
-  ): (() => void) => {
-    const handler = (
-      _e: Electron.IpcRendererEvent,
-      data: { idleDurationSeconds: number },
-    ): void => listener(data);
-    ipcRenderer.on("idle-returned", handler);
-    return () => ipcRenderer.off("idle-returned", handler);
-  },
-
   clearTodayData: (): Promise<void> => ipcRenderer.invoke("clear-today-data"),
 
   clearAllData: (): Promise<void> => ipcRenderer.invoke("clear-all-data"),
