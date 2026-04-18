@@ -5,6 +5,7 @@ import { formatTime } from "@renderer/lib/format";
 import { cn } from "@renderer/lib/utils";
 import { Toaster } from "@renderer/components/ui/sonner";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
+import { Logo } from "@renderer/components/Logo";
 import { ActivitiesView } from "./views/ActivitiesView";
 import { ProjectsView } from "./views/ProjectsView";
 import { ProjectDetailView } from "./views/ProjectDetailView";
@@ -31,8 +32,8 @@ export function App() {
     <TooltipProvider delayDuration={200}>
       <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
         <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card/50">
-          <div className="flex h-12 items-center px-4 pt-3">
-            <div className="text-sm font-semibold tracking-tight">No Time</div>
+          <div className="flex items-center px-5 pt-10 pb-4">
+            <Logo className="h-5 w-auto text-foreground" />
           </div>
 
           <nav className="flex-1 space-y-1 p-3">
