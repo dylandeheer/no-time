@@ -45,16 +45,20 @@ export function ProjectGroup({ project, activities, projects, defaultOpen = true
         />
       </button>
 
-      {open && sorted.length > 0 && (
-        <div className="divide-y divide-border border-t border-border">
-          {sorted.map((a) => (
-            <ActivityRow
-              key={`${a.app}::${a.title}`}
-              activity={a}
-              project={project}
-              projects={projects}
-            />
-          ))}
+      {sorted.length > 0 && (
+        <div className="grid-collapse" data-open={open}>
+          <div>
+            <div className="divide-y divide-border border-t border-border">
+              {sorted.map((a) => (
+                <ActivityRow
+                  key={`${a.app}::${a.title}`}
+                  activity={a}
+                  project={project}
+                  projects={projects}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -99,3 +99,32 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(240 4% 30%);
 }
+
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-slide-in {
+  animation: fade-slide-in 0.2s ease-out;
+}
+
+.grid-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease-out;
+}
+
+.grid-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.grid-collapse > div {
+  overflow: hidden;
+}

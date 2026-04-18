@@ -81,7 +81,7 @@ export function ProjectCard({ project, rules, activities, rangeTime, rangeLabel,
 
   return (
     <Card
-      className="group flex cursor-pointer flex-col p-5 transition-colors hover:border-accent"
+      className="group flex cursor-pointer flex-col p-5 transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md"
       onClick={(e) => {
         if (editing) return;
         const target = e.target as HTMLElement;

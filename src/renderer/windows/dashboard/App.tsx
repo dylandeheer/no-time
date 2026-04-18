@@ -128,18 +128,20 @@ export function App() {
         </aside>
 
         <main className="flex-1 overflow-y-auto">
-          {view === "projects" && !detailProject && (
-            <ProjectsView state={state} onOpenProject={openProjectDetail} />
-          )}
-          {view === "projects" && detailProject && (
-            <ProjectDetailView
-              state={state}
-              project={detailProject}
-              onBack={backToProjects}
-            />
-          )}
-          {view === "activities" && <ActivitiesView state={state} />}
-          {view === "settings" && <SettingsView />}
+          <div key={detailProjectId ? `detail-${detailProjectId}` : view} className="animate-fade-slide-in">
+            {view === "projects" && !detailProject && (
+              <ProjectsView state={state} onOpenProject={openProjectDetail} />
+            )}
+            {view === "projects" && detailProject && (
+              <ProjectDetailView
+                state={state}
+                project={detailProject}
+                onBack={backToProjects}
+              />
+            )}
+            {view === "activities" && <ActivitiesView state={state} />}
+            {view === "settings" && <SettingsView />}
+          </div>
         </main>
       </div>
 
