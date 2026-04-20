@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, ipcMain, nativeImage, dialog, globalShortcut, screen } from "electron";
+import { app, BrowserWindow, Tray, ipcMain, nativeImage, dialog, globalShortcut, screen, powerMonitor } from "electron";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -56,10 +56,8 @@ let trackingDirty = false;
 let isPaused = false;
 
 let settings: AppSettings;
-let lastActivityKey = "";
-let lastActivityChangeTime = Date.now();
-let isIdle = false;
 let trackingIntervalId: ReturnType<typeof setInterval> | null = null;
+let trackingTickInFlight = false;
 
 function buildTrackingState(): TrackingState {
   const today = todayKey();
@@ -139,8 +137,24 @@ async function trackLoop(): Promise<void> {
   const intervalSeconds = Math.round(settings.trackingIntervalMs / 1000);
 
   trackingIntervalId = setInterval(async () => {
+    if (trackingTickInFlight) return;
+    trackingTickInFlight = true;
     try {
       if (isPaused) {
+        broadcast();
+        return;
+      }
+
+      const idleSeconds = powerMonitor.getSystemIdleTime();
+      const isIdle =
+        settings.idle.enabled && idleSeconds >= settings.idle.timeoutMinutes * 60;
+
+      if (isIdle) {
+        const idleKey = activityKey("Idle", "Idle");
+        const today = todayKey();
+        if (!trackingDays[today]) trackingDays[today] = {};
+        trackingDays[today][idleKey] = (trackingDays[today][idleKey] ?? 0) + intervalSeconds;
+        trackingDirty = true;
         broadcast();
         return;
       }
@@ -155,30 +169,6 @@ async function trackLoop(): Promise<void> {
       const title = win.title;
       const key = activityKey(app, title);
 
-      // Idle detection
-      if (key !== lastActivityKey) {
-        lastActivityKey = key;
-        lastActivityChangeTime = Date.now();
-        isIdle = false;
-      }
-
-      if (settings.idle.enabled && !isIdle) {
-        const elapsed = Date.now() - lastActivityChangeTime;
-        if (elapsed > settings.idle.timeoutMinutes * 60 * 1000) {
-          isIdle = true;
-        }
-      }
-
-      if (isIdle) {
-        const idleKey = activityKey("Idle", "Idle");
-        const today = todayKey();
-        if (!trackingDays[today]) trackingDays[today] = {};
-        trackingDays[today][idleKey] = (trackingDays[today][idleKey] ?? 0) + intervalSeconds;
-        trackingDirty = true;
-        broadcast();
-        return;
-      }
-
       const today = todayKey();
       if (!trackingDays[today]) trackingDays[today] = {};
       trackingDays[today][key] = (trackingDays[today][key] ?? 0) + intervalSeconds;
@@ -190,6 +180,8 @@ async function trackLoop(): Promise<void> {
       broadcast();
     } catch (err) {
       console.error("Tracking error:", err);
+    } finally {
+      trackingTickInFlight = false;
     }
   }, settings.trackingIntervalMs);
 
@@ -549,7 +541,7 @@ function registerIpc(): void {
 
   ipcMain.handle(
     "update-settings",
-    (_e, partial: Partial<AppSettings>): AppSettings => {
+    async (_e, partial: Partial<AppSettings>): Promise<AppSettings> => {
       const prevInterval = settings.trackingIntervalMs;
       settings = {
         ...settings,
@@ -559,7 +551,8 @@ function registerIpc(): void {
       saveSettings(settings);
       if (partial.trackingIntervalMs && partial.trackingIntervalMs !== prevInterval && trackingIntervalId) {
         clearInterval(trackingIntervalId);
-        trackLoop();
+        trackingIntervalId = null;
+        await trackLoop();
       }
       return settings;
     },
@@ -642,6 +635,10 @@ app.whenReady().then(async () => {
   } else {
     ipcMain.handle("install-update", () => {});
   }
+
+  powerMonitor.on("resume", () => {
+    broadcast();
+  });
 
   await trackLoop();
 });
