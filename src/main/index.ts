@@ -57,7 +57,26 @@ let isPaused = false;
 
 let settings: AppSettings;
 let trackingIntervalId: ReturnType<typeof setInterval> | null = null;
+let persistenceIntervalId: ReturnType<typeof setInterval> | null = null;
 let trackingTickInFlight = false;
+
+const ACTIVE_WINDOW_TIMEOUT_MS = 5000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 function buildTrackingState(): TrackingState {
   const today = todayKey();
@@ -155,27 +174,28 @@ async function trackLoop(): Promise<void> {
         if (!trackingDays[today]) trackingDays[today] = {};
         trackingDays[today][idleKey] = (trackingDays[today][idleKey] ?? 0) + intervalSeconds;
         trackingDirty = true;
+        currentActivity = null;
         broadcast();
         return;
       }
 
-      const win = await activeWindow();
+      const win = await withTimeout(activeWindow(), ACTIVE_WINDOW_TIMEOUT_MS, "activeWindow");
       if (!win || !win.owner || !win.title) {
         currentActivity = null;
         return;
       }
 
-      const app = win.owner.name;
+      const appName = win.owner.name;
       const title = win.title;
-      const key = activityKey(app, title);
+      const key = activityKey(appName, title);
 
       const today = todayKey();
       if (!trackingDays[today]) trackingDays[today] = {};
       trackingDays[today][key] = (trackingDays[today][key] ?? 0) + intervalSeconds;
       trackingDirty = true;
 
-      const match = cache.get(app, title, { rules, overrides });
-      currentActivity = { app, title, projectId: match.projectId };
+      const match = cache.get(appName, title, { rules, overrides });
+      currentActivity = { app: appName, title, projectId: match.projectId };
 
       broadcast();
     } catch (err) {
@@ -184,8 +204,11 @@ async function trackLoop(): Promise<void> {
       trackingTickInFlight = false;
     }
   }, settings.trackingIntervalMs);
+}
 
-  setInterval(() => {
+function startPersistenceTimer(): void {
+  if (persistenceIntervalId) return;
+  persistenceIntervalId = setInterval(() => {
     if (trackingDirty) {
       saveTracking(trackingDays);
       trackingDirty = false;
@@ -552,6 +575,7 @@ function registerIpc(): void {
       if (partial.trackingIntervalMs && partial.trackingIntervalMs !== prevInterval && trackingIntervalId) {
         clearInterval(trackingIntervalId);
         trackingIntervalId = null;
+        trackingTickInFlight = false;
         await trackLoop();
       }
       return settings;
@@ -640,6 +664,7 @@ app.whenReady().then(async () => {
     broadcast();
   });
 
+  startPersistenceTimer();
   await trackLoop();
 });
 
