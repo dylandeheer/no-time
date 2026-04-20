@@ -1,5 +1,12 @@
-import type { AssignedBy, ManualEntry, ManualEntryId, ProjectId, Rule } from "@shared/types";
-import { MANUAL_APP_NAME, activityKey } from "@shared/types";
+import type {
+  AssignedBy,
+  CalendarEvent,
+  ManualEntry,
+  ManualEntryId,
+  ProjectId,
+  Rule,
+} from "@shared/types";
+import { CALENDAR_APP_NAME, MANUAL_APP_NAME, activityKey } from "@shared/types";
 
 export interface MatchResult {
   projectId: ProjectId | null;
@@ -10,6 +17,7 @@ export interface MatchContext {
   rules: Rule[];
   overrides: Record<string, ProjectId>;
   manualEntries: Record<ManualEntryId, ManualEntry>;
+  calendarEvents: Record<string, CalendarEvent>;
 }
 
 export function resolveProject(app: string, title: string, ctx: MatchContext): MatchResult {
@@ -18,6 +26,35 @@ export function resolveProject(app: string, title: string, ctx: MatchContext): M
     if (entry) {
       return { projectId: entry.projectId, assignedBy: "manual-entry" };
     }
+    return { projectId: null, assignedBy: "none" };
+  }
+
+  if (app === CALENDAR_APP_NAME) {
+    const key = activityKey(app, title);
+    const override = ctx.overrides[key];
+    if (override) {
+      return { projectId: override, assignedBy: "manual" };
+    }
+
+    const event = ctx.calendarEvents[title];
+    if (!event) {
+      return { projectId: null, assignedBy: "none" };
+    }
+
+    const sortedRules = [...ctx.rules].sort((a, b) => a.priority - b.priority);
+    const eventTitleLower = event.title.toLowerCase();
+
+    for (const rule of sortedRules) {
+      if (rule.type !== "calendar") continue;
+      const patternLower = rule.pattern.toLowerCase();
+      const hasCalendarFilter = Boolean(rule.calendarId);
+      const hasPatternFilter = patternLower.length > 0;
+      if (!hasCalendarFilter && !hasPatternFilter) continue;
+      if (hasCalendarFilter && rule.calendarId !== event.calendarId) continue;
+      if (hasPatternFilter && !eventTitleLower.includes(patternLower)) continue;
+      return { projectId: rule.projectId, assignedBy: "calendar-rule" };
+    }
+
     return { projectId: null, assignedBy: "none" };
   }
 
@@ -33,6 +70,7 @@ export function resolveProject(app: string, title: string, ctx: MatchContext): M
   const titleLower = title.toLowerCase();
 
   for (const rule of sortedRules) {
+    if (rule.type === "calendar") continue;
     const pattern = rule.pattern.toLowerCase();
     if (!pattern) continue;
 

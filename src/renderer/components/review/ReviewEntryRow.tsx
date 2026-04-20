@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react";
+import { CalendarDays, Pencil } from "lucide-react";
 import type { DayReviewEntry, Project } from "@shared/types";
 import { formatTime } from "@renderer/lib/format";
 import { AssignmentDropdown } from "@renderer/components/activity/AssignmentDropdown";
@@ -10,13 +10,28 @@ interface Props {
   onEditManual?: (manualEntryId: string) => void;
 }
 
+function formatEventTimeRange(start: string, end: string): string {
+  try {
+    const s = new Date(start);
+    const e = new Date(end);
+    const fmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+    return `${fmt.format(s)} – ${fmt.format(e)}`;
+  } catch {
+    return "";
+  }
+}
+
 export function ReviewEntryRow({ entry, project, projects, onEditManual }: Props) {
   const isManual = entry.kind === "manual";
+  const isCalendar = entry.kind === "calendar";
 
   return (
     <div className="flex items-center gap-4 px-5 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
+          {isCalendar && (
+            <CalendarDays className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          )}
           <span className="truncate text-sm">{entry.title}</span>
           {isManual && (
             <span
@@ -26,7 +41,15 @@ export function ReviewEntryRow({ entry, project, projects, onEditManual }: Props
               Manual
             </span>
           )}
-          {!isManual && entry.assignedBy === "manual" && (
+          {isCalendar && (
+            <span
+              className="rounded-sm bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-sky-400"
+              title="From Calendar"
+            >
+              Meeting
+            </span>
+          )}
+          {!isManual && !isCalendar && entry.assignedBy === "manual" && (
             <span
               className="text-[9px] font-medium uppercase tracking-wider text-primary"
               title="Manually assigned"
@@ -36,7 +59,14 @@ export function ReviewEntryRow({ entry, project, projects, onEditManual }: Props
           )}
         </div>
         <div className="truncate text-xs text-muted-foreground">
-          {isManual ? "Manual entry" : entry.app}
+          {isManual && "Manual entry"}
+          {isCalendar &&
+            entry.calendarEvent &&
+            `${entry.calendarEvent.calendarTitle} · ${formatEventTimeRange(
+              entry.calendarEvent.start,
+              entry.calendarEvent.end,
+            )}`}
+          {!isManual && !isCalendar && entry.app}
         </div>
       </div>
       <div className="shrink-0 font-mono text-sm tabular-nums text-muted-foreground">

@@ -18,6 +18,8 @@ import type {
   CreateManualEntryInput,
   UpdateManualEntryInput,
   DayReviewState,
+  CalendarAuthStatus,
+  CalendarInfo,
 } from "../shared/types.js";
 
 type TrackingListener = (state: TrackingState) => void;
@@ -125,6 +127,13 @@ const api = {
     ipcRenderer.on("focus-review", handler);
     return () => ipcRenderer.off("focus-review", handler);
   },
+
+  calendarAuthStatus: (options?: { request?: boolean }): Promise<CalendarAuthStatus> =>
+    ipcRenderer.invoke("calendar-auth-status", options),
+
+  calendarList: (): Promise<CalendarInfo[]> => ipcRenderer.invoke("calendar-list"),
+
+  calendarSync: (): Promise<void> => ipcRenderer.invoke("calendar-sync"),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

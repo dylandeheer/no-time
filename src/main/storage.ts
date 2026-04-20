@@ -1,5 +1,13 @@
 import Store from "electron-store";
-import type { Project, ProjectId, Rule, AppSettings, ManualEntry, ManualEntryId } from "@shared/types";
+import type {
+  Project,
+  ProjectId,
+  Rule,
+  AppSettings,
+  ManualEntry,
+  ManualEntryId,
+  CalendarEvent,
+} from "@shared/types";
 
 interface ProjectsStoreSchema {
   projects: Project[];
@@ -13,6 +21,10 @@ interface TrackingStoreSchema {
 
 interface ManualEntriesStoreSchema {
   entries: Record<ManualEntryId, ManualEntry>;
+}
+
+interface CalendarCacheStoreSchema {
+  events: Record<string, CalendarEvent>;
 }
 
 const projectsStore = new Store<ProjectsStoreSchema>({
@@ -35,6 +47,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   widgetPosition: null,
   reviewNotification: { enabled: true, time: "17:30" },
   reviewedDays: {},
+  calendar: {
+    enabled: false,
+    includeAllDay: false,
+    enabledCalendarIds: [],
+  },
 };
 
 const settingsStore = new Store<AppSettings>({
@@ -45,6 +62,11 @@ const settingsStore = new Store<AppSettings>({
 const manualEntriesStore = new Store<ManualEntriesStoreSchema>({
   name: "manual-entries",
   defaults: { entries: {} },
+});
+
+const calendarCacheStore = new Store<CalendarCacheStoreSchema>({
+  name: "calendar-cache",
+  defaults: { events: {} },
 });
 
 export function loadSettings(): AppSettings {
@@ -58,6 +80,7 @@ export function loadSettings(): AppSettings {
       ...(stored.reviewNotification ?? {}),
     },
     reviewedDays: stored.reviewedDays ?? {},
+    calendar: { ...DEFAULT_SETTINGS.calendar, ...(stored.calendar ?? {}) },
   };
 }
 
@@ -103,6 +126,14 @@ export function loadManualEntries(): Record<ManualEntryId, ManualEntry> {
 
 export function saveManualEntries(entries: Record<ManualEntryId, ManualEntry>): void {
   manualEntriesStore.set("entries", entries);
+}
+
+export function loadCalendarEvents(): Record<string, CalendarEvent> {
+  return calendarCacheStore.get("events");
+}
+
+export function saveCalendarEvents(events: Record<string, CalendarEvent>): void {
+  calendarCacheStore.set("events", events);
 }
 
 export function todayKey(): string {

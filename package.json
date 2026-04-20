@@ -12,9 +12,10 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "icons": "node scripts/generate-icons.mjs",
-    "pack": "electron-vite build && electron-builder --dir",
-    "dist": "electron-vite build && electron-builder",
-    "dist:mac": "electron-vite build && electron-builder --mac",
+    "build:sidecars": "./scripts/build-sidecars.sh",
+    "pack": "npm run build:sidecars && electron-vite build && electron-builder --dir",
+    "dist": "npm run build:sidecars && electron-vite build && electron-builder",
+    "dist:mac": "npm run build:sidecars && electron-vite build && electron-builder --mac",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:linux": "electron-vite build && electron-builder --linux"
   },

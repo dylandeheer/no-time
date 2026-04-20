@@ -1,7 +1,7 @@
 export type ProjectId = string;
 export type RuleId = string;
 
-export type RuleType = "keyword" | "app";
+export type RuleType = "keyword" | "app" | "calendar";
 
 export interface Project {
   id: ProjectId;
@@ -16,9 +16,10 @@ export interface Rule {
   type: RuleType;
   pattern: string;
   priority: number;
+  calendarId?: string;
 }
 
-export type AssignedBy = "rule" | "manual" | "manual-entry" | "none";
+export type AssignedBy = "rule" | "manual" | "manual-entry" | "calendar-rule" | "none";
 
 export type ManualEntryId = string;
 
@@ -83,6 +84,7 @@ export interface CreateRuleInput {
   type: RuleType;
   pattern: string;
   priority?: number;
+  calendarId?: string;
 }
 
 export interface UpdateRuleInput {
@@ -90,6 +92,7 @@ export interface UpdateRuleInput {
   type?: RuleType;
   pattern?: string;
   priority?: number;
+  calendarId?: string | null;
 }
 
 export interface CreateProjectFromActivityInput {
@@ -143,11 +146,12 @@ export interface AppSettings {
   widgetPosition: WidgetPosition | null;
   reviewNotification: ReviewNotificationSettings;
   reviewedDays: Record<string, number>;
+  calendar: CalendarSettings;
 }
 
 export interface DayReviewEntry {
   key: string;
-  kind: "activity" | "manual";
+  kind: "activity" | "manual" | "calendar";
   app: string;
   title: string;
   description?: string;
@@ -155,6 +159,14 @@ export interface DayReviewEntry {
   projectId: ProjectId | null;
   assignedBy: AssignedBy;
   manualEntryId?: ManualEntryId;
+  calendarEvent?: {
+    eventId: string;
+    calendarId: string;
+    calendarTitle: string;
+    start: string;
+    end: string;
+    location?: string;
+  };
 }
 
 export interface DayReviewProjectGroup {
@@ -186,4 +198,49 @@ export function parseManualEntryKey(key: string): ManualEntryId | null {
   const parsed = parseActivityKey(key);
   if (!parsed) return null;
   return parsed.app === MANUAL_APP_NAME ? parsed.title : null;
+}
+
+export const CALENDAR_APP_NAME = "Calendar";
+export const calendarEventKey = (eventId: string): string => `${CALENDAR_APP_NAME}::${eventId}`;
+
+export function parseCalendarEventKey(key: string): string | null {
+  const parsed = parseActivityKey(key);
+  if (!parsed) return null;
+  return parsed.app === CALENDAR_APP_NAME ? parsed.title : null;
+}
+
+export interface CalendarInfo {
+  id: string;
+  title: string;
+  source: string;
+  color: string;
+  allowsModifications: boolean;
+}
+
+export interface CalendarEvent {
+  id: string;
+  calendarId: string;
+  calendarTitle: string;
+  title: string;
+  start: string;
+  end: string;
+  durationSeconds: number;
+  isAllDay: boolean;
+  location: string | null;
+  notes: string | null;
+}
+
+export type CalendarAuthStatus =
+  | "not-determined"
+  | "restricted"
+  | "denied"
+  | "authorized"
+  | "write-only"
+  | "unavailable"
+  | "unknown";
+
+export interface CalendarSettings {
+  enabled: boolean;
+  includeAllDay: boolean;
+  enabledCalendarIds: string[];
 }

@@ -9,6 +9,12 @@ files:
   - assets/iconTemplate.png
   - assets/iconTemplate@2x.png
 
+extraResources:
+  - from: assets/bin
+    to: bin
+    filter:
+      - "no-time-calendar"
+
 mac:
   category: public.app-category.productivity
   icon: assets/icon.png
@@ -16,6 +22,9 @@ mac:
   gatekeeperAssess: false
   entitlements: entitlements.mac.plist
   entitlementsInherit: entitlements.mac.inherit.plist
+  extendInfo:
+    NSCalendarsUsageDescription: "No Time uses Calendar to include meetings in your tracked time."
+    NSCalendarsFullAccessUsageDescription: "No Time uses Calendar to include meetings in your tracked time."
   target:
     - dmg
     - zip

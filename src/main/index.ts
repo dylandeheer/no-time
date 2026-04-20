@@ -17,16 +17,26 @@ import {
   saveSettings,
   loadManualEntries,
   saveManualEntries,
+  loadCalendarEvents,
+  saveCalendarEvents,
   todayKey,
   getDateRangeBounds,
   getTrackingForRange,
 } from "./storage.js";
 import { scheduleReviewNotification } from "./notifications.js";
 import {
+  getAuthStatus as calendarAuthStatus,
+  listCalendars as calendarListCalendars,
+  listEvents as calendarListEvents,
+  mergeCalendarEvents,
+} from "./calendar.js";
+import {
+  CALENDAR_APP_NAME,
   MANUAL_APP_NAME,
   activityKey,
   manualEntryKey,
   parseActivityKey,
+  parseCalendarEventKey,
   parseManualEntryKey,
 } from "@shared/types";
 import type {
@@ -53,6 +63,9 @@ import type {
   DayReviewEntry,
   DayReviewProjectGroup,
   DayReviewState,
+  CalendarAuthStatus,
+  CalendarEvent,
+  CalendarInfo,
 } from "@shared/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +79,9 @@ let rules: Rule[] = [];
 let overrides: Record<string, ProjectId> = {};
 let trackingDays: Record<string, Record<string, number>> = {};
 let manualEntries: Record<ManualEntryId, ManualEntry> = {};
+let calendarEvents: Record<string, CalendarEvent> = {};
+let calendarPollIntervalId: ReturnType<typeof setInterval> | null = null;
+let calendarPolling = false;
 let currentActivity: CurrentActivity | null = null;
 
 const cache = new MatchCache();
@@ -83,6 +99,10 @@ function displayTitleFor(app: string, title: string): string {
     const entry = manualEntries[title];
     if (entry) return entry.description || "(untitled)";
   }
+  if (app === CALENDAR_APP_NAME) {
+    const event = calendarEvents[title];
+    if (event) return event.title || "(untitled meeting)";
+  }
   return title;
 }
 
@@ -97,7 +117,7 @@ function buildTrackingState(): TrackingState {
     const parsed = parseActivityKey(key);
     if (!parsed) continue;
 
-    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries });
+    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries, calendarEvents });
     activities[key] = {
       app: parsed.app,
       title: displayTitleFor(parsed.app, parsed.title),
@@ -143,7 +163,7 @@ function buildHistoricalState(range: DateRange): HistoricalState {
     const parsed = parseActivityKey(key);
     if (!parsed) continue;
 
-    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries });
+    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries, calendarEvents });
     activities[key] = {
       app: parsed.app,
       title: displayTitleFor(parsed.app, parsed.title),
@@ -167,20 +187,44 @@ function buildDayReviewState(date: string): DayReviewState {
     const parsed = parseActivityKey(key);
     if (!parsed) continue;
 
-    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries });
+    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries, calendarEvents });
     const manualId = parseManualEntryKey(key);
     const manualEntry = manualId ? manualEntries[manualId] : undefined;
+    const calendarEventId = parseCalendarEventKey(key);
+    const calendarEvent = calendarEventId ? calendarEvents[calendarEventId] : undefined;
+
+    let kind: DayReviewEntry["kind"] = "activity";
+    let title = parsed.title;
+    let description: string | undefined;
+    if (manualEntry) {
+      kind = "manual";
+      title = manualEntry.description;
+      description = manualEntry.description;
+    } else if (calendarEvent) {
+      kind = "calendar";
+      title = calendarEvent.title;
+    }
 
     entries.push({
       key,
-      kind: manualEntry ? "manual" : "activity",
+      kind,
       app: parsed.app,
-      title: manualEntry ? manualEntry.description : parsed.title,
-      description: manualEntry?.description,
+      title,
+      description,
       seconds,
       projectId: match.projectId,
       assignedBy: match.assignedBy,
       manualEntryId: manualId ?? undefined,
+      calendarEvent: calendarEvent
+        ? {
+            eventId: calendarEvent.id,
+            calendarId: calendarEvent.calendarId,
+            calendarTitle: calendarEvent.calendarTitle,
+            start: calendarEvent.start,
+            end: calendarEvent.end,
+            location: calendarEvent.location ?? undefined,
+          }
+        : undefined,
     });
     totalSeconds += seconds;
   }
@@ -214,6 +258,86 @@ function buildDayReviewState(date: string): DayReviewState {
     groups,
     unassigned,
   };
+}
+
+const CALENDAR_LOOKBACK_DAYS = 7;
+const CALENDAR_POLL_INTERVAL_MS = 5 * 60 * 1000;
+
+function calendarFetchRange(): { start: string; end: string } {
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(start.getDate() - CALENDAR_LOOKBACK_DAYS);
+  const fmt = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  return { start: fmt(start), end: fmt(today) };
+}
+
+async function runCalendarSync(): Promise<void> {
+  if (calendarPolling) return;
+  if (!settings.calendar.enabled) return;
+
+  calendarPolling = true;
+  try {
+    const status = await calendarAuthStatus();
+    if (status !== "authorized") return;
+
+    const { start, end } = calendarFetchRange();
+    const fetched = await calendarListEvents(start, end, settings.calendar.enabledCalendarIds);
+    const merged = mergeCalendarEvents(
+      trackingDays,
+      calendarEvents,
+      fetched,
+      start,
+      end,
+      settings.calendar,
+    );
+    trackingDays = merged.trackingDays;
+    calendarEvents = merged.events;
+    saveTracking(trackingDays);
+    saveCalendarEvents(calendarEvents);
+    cache.invalidate();
+    broadcast();
+  } catch (err) {
+    console.warn("Calendar sync failed:", err);
+  } finally {
+    calendarPolling = false;
+  }
+}
+
+function startCalendarPolling(): void {
+  stopCalendarPolling();
+  if (!settings.calendar.enabled) return;
+  void runCalendarSync();
+  calendarPollIntervalId = setInterval(() => {
+    void runCalendarSync();
+  }, CALENDAR_POLL_INTERVAL_MS);
+}
+
+function stopCalendarPolling(): void {
+  if (calendarPollIntervalId) {
+    clearInterval(calendarPollIntervalId);
+    calendarPollIntervalId = null;
+  }
+}
+
+function clearAllCalendarEntries(): void {
+  for (const day of Object.keys(trackingDays)) {
+    const entries = trackingDays[day];
+    for (const key of Object.keys(entries)) {
+      if (parseCalendarEventKey(key) !== null) {
+        delete entries[key];
+      }
+    }
+    if (Object.keys(entries).length === 0) delete trackingDays[day];
+  }
+  calendarEvents = {};
+  saveTracking(trackingDays);
+  saveCalendarEvents(calendarEvents);
+  cache.invalidate();
 }
 
 async function trackLoop(): Promise<void> {
@@ -268,7 +392,7 @@ async function trackLoop(): Promise<void> {
       trackingDays[today][key] = (trackingDays[today][key] ?? 0) + intervalSeconds;
       trackingDirty = true;
 
-      const match = cache.get(app, title, { rules, overrides, manualEntries });
+      const match = cache.get(app, title, { rules, overrides, manualEntries, calendarEvents });
       currentActivity = { app, title, projectId: match.projectId };
 
       broadcast();
@@ -495,6 +619,7 @@ function registerIpc(): void {
       type: input.type,
       pattern: input.pattern.trim(),
       priority: input.priority ?? 100,
+      calendarId: input.calendarId,
     };
     rules = [...rules, rule];
     saveRules(rules);
@@ -507,13 +632,17 @@ function registerIpc(): void {
     let updated: Rule | null = null;
     rules = rules.map((r) => {
       if (r.id !== input.id) return r;
-      updated = {
+      const next: Rule = {
         ...r,
         type: input.type ?? r.type,
         pattern: input.pattern !== undefined ? input.pattern.trim() : r.pattern,
         priority: input.priority ?? r.priority,
       };
-      return updated;
+      if (input.calendarId !== undefined) {
+        next.calendarId = input.calendarId ?? undefined;
+      }
+      updated = next;
+      return next;
     });
     saveRules(rules);
     cache.invalidate();
@@ -599,7 +728,7 @@ function registerIpc(): void {
           const parsed = parseActivityKey(key);
           if (!parsed) continue;
 
-          const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries });
+          const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries, calendarEvents });
           const project = match.projectId ? projectMap.get(match.projectId) : undefined;
           rows.push({
             date: day,
@@ -654,9 +783,10 @@ function registerIpc(): void {
 
   ipcMain.handle(
     "update-settings",
-    (_e, partial: Partial<AppSettings>): AppSettings => {
+    async (_e, partial: Partial<AppSettings>): Promise<AppSettings> => {
       const prevInterval = settings.trackingIntervalMs;
       const prevNotification = settings.reviewNotification;
+      const prevCalendar = settings.calendar;
       settings = {
         ...settings,
         ...partial,
@@ -665,6 +795,7 @@ function registerIpc(): void {
           ...settings.reviewNotification,
           ...(partial.reviewNotification ?? {}),
         },
+        calendar: { ...settings.calendar, ...(partial.calendar ?? {}) },
       };
       saveSettings(settings);
       if (partial.trackingIntervalMs && partial.trackingIntervalMs !== prevInterval && trackingIntervalId) {
@@ -678,12 +809,53 @@ function registerIpc(): void {
       ) {
         scheduleReviewNotification(settings.reviewNotification, focusReviewToday);
       }
+      if (partial.calendar) {
+        const calendarChanged =
+          prevCalendar.enabled !== settings.calendar.enabled ||
+          prevCalendar.includeAllDay !== settings.calendar.includeAllDay ||
+          prevCalendar.enabledCalendarIds.join("|") !==
+            settings.calendar.enabledCalendarIds.join("|");
+        if (calendarChanged) {
+          if (!settings.calendar.enabled) {
+            stopCalendarPolling();
+            clearAllCalendarEntries();
+            broadcast();
+          } else {
+            startCalendarPolling();
+          }
+        }
+      }
       return settings;
     },
   );
 
   ipcMain.handle("get-review-state", (_e, date: string): DayReviewState => {
     return buildDayReviewState(date);
+  });
+
+  ipcMain.handle(
+    "calendar-auth-status",
+    async (_e, options?: { request?: boolean }): Promise<CalendarAuthStatus> => {
+      try {
+        return await calendarAuthStatus(options);
+      } catch (err) {
+        console.warn("calendar auth status failed:", err);
+        return "unavailable";
+      }
+    },
+  );
+
+  ipcMain.handle("calendar-list", async (): Promise<CalendarInfo[]> => {
+    try {
+      return await calendarListCalendars();
+    } catch (err) {
+      console.warn("calendar list failed:", err);
+      return [];
+    }
+  });
+
+  ipcMain.handle("calendar-sync", async (): Promise<void> => {
+    await runCalendarSync();
   });
 
   ipcMain.handle("mark-day-reviewed", (_e, date: string): AppSettings => {
@@ -806,9 +978,11 @@ app.whenReady().then(async () => {
   overrides = loadOverrides();
   trackingDays = loadTracking();
   manualEntries = loadManualEntries();
+  calendarEvents = loadCalendarEvents();
   settings = loadSettings();
 
   scheduleReviewNotification(settings.reviewNotification, focusReviewToday);
+  startCalendarPolling();
 
   if (process.platform === "darwin" && app.dock) {
     const dockIcon = nativeImage.createFromPath(
@@ -862,6 +1036,7 @@ app.whenReady().then(async () => {
 
 app.on("before-quit", () => {
   globalShortcut.unregisterAll();
+  stopCalendarPolling();
   if (trackingDirty) saveTracking(trackingDays);
 });
 
