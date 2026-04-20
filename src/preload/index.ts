@@ -13,9 +13,15 @@ import type {
   DateRange,
   HistoricalState,
   AppSettings,
+  ManualEntry,
+  ManualEntryId,
+  CreateManualEntryInput,
+  UpdateManualEntryInput,
+  DayReviewState,
 } from "../shared/types.js";
 
 type TrackingListener = (state: TrackingState) => void;
+type FocusReviewListener = (date: string) => void;
 
 const api = {
   getState: (): Promise<TrackingState> => ipcRenderer.invoke("get-state"),
@@ -94,6 +100,30 @@ const api = {
     const handler = (_e: Electron.IpcRendererEvent, state: TrackingState): void => listener(state);
     ipcRenderer.on("tracking-update", handler);
     return () => ipcRenderer.off("tracking-update", handler);
+  },
+
+  getReviewState: (date: string): Promise<DayReviewState> =>
+    ipcRenderer.invoke("get-review-state", date),
+
+  markDayReviewed: (date: string): Promise<AppSettings> =>
+    ipcRenderer.invoke("mark-day-reviewed", date),
+
+  unmarkDayReviewed: (date: string): Promise<AppSettings> =>
+    ipcRenderer.invoke("unmark-day-reviewed", date),
+
+  addManualEntry: (input: CreateManualEntryInput): Promise<ManualEntry> =>
+    ipcRenderer.invoke("add-manual-entry", input),
+
+  updateManualEntry: (input: UpdateManualEntryInput): Promise<ManualEntry | null> =>
+    ipcRenderer.invoke("update-manual-entry", input),
+
+  deleteManualEntry: (id: ManualEntryId): Promise<void> =>
+    ipcRenderer.invoke("delete-manual-entry", id),
+
+  onFocusReview: (listener: FocusReviewListener): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, date: string): void => listener(date);
+    ipcRenderer.on("focus-review", handler);
+    return () => ipcRenderer.off("focus-review", handler);
   },
 };
 

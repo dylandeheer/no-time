@@ -18,7 +18,32 @@ export interface Rule {
   priority: number;
 }
 
-export type AssignedBy = "rule" | "manual" | "none";
+export type AssignedBy = "rule" | "manual" | "manual-entry" | "none";
+
+export type ManualEntryId = string;
+
+export interface ManualEntry {
+  id: ManualEntryId;
+  date: string;
+  description: string;
+  seconds: number;
+  projectId: ProjectId | null;
+  createdAt: number;
+}
+
+export interface CreateManualEntryInput {
+  date: string;
+  description: string;
+  seconds: number;
+  projectId: ProjectId | null;
+}
+
+export interface UpdateManualEntryInput {
+  id: ManualEntryId;
+  description?: string;
+  seconds?: number;
+  projectId?: ProjectId | null;
+}
 
 export interface ActivitySummary {
   app: string;
@@ -107,10 +132,43 @@ export interface WidgetPosition {
   y: number;
 }
 
+export interface ReviewNotificationSettings {
+  enabled: boolean;
+  time: string;
+}
+
 export interface AppSettings {
   trackingIntervalMs: number;
   idle: IdleSettings;
   widgetPosition: WidgetPosition | null;
+  reviewNotification: ReviewNotificationSettings;
+  reviewedDays: Record<string, number>;
+}
+
+export interface DayReviewEntry {
+  key: string;
+  kind: "activity" | "manual";
+  app: string;
+  title: string;
+  description?: string;
+  seconds: number;
+  projectId: ProjectId | null;
+  assignedBy: AssignedBy;
+  manualEntryId?: ManualEntryId;
+}
+
+export interface DayReviewProjectGroup {
+  project: Project | null;
+  entries: DayReviewEntry[];
+  totalSeconds: number;
+}
+
+export interface DayReviewState {
+  date: string;
+  totalSeconds: number;
+  reviewedAt: number | null;
+  groups: DayReviewProjectGroup[];
+  unassigned: DayReviewEntry[];
 }
 
 export const activityKey = (app: string, title: string): string => `${app}::${title}`;
@@ -119,4 +177,13 @@ export function parseActivityKey(key: string): { app: string; title: string } | 
   const idx = key.indexOf("::");
   if (idx <= 0) return null;
   return { app: key.slice(0, idx), title: key.slice(idx + 2) };
+}
+
+export const MANUAL_APP_NAME = "Manual entry";
+export const manualEntryKey = (id: ManualEntryId): string => `${MANUAL_APP_NAME}::${id}`;
+
+export function parseManualEntryKey(key: string): ManualEntryId | null {
+  const parsed = parseActivityKey(key);
+  if (!parsed) return null;
+  return parsed.app === MANUAL_APP_NAME ? parsed.title : null;
 }

@@ -1,5 +1,5 @@
-import type { AssignedBy, ProjectId, Rule } from "@shared/types";
-import { activityKey } from "@shared/types";
+import type { AssignedBy, ManualEntry, ManualEntryId, ProjectId, Rule } from "@shared/types";
+import { MANUAL_APP_NAME, activityKey } from "@shared/types";
 
 export interface MatchResult {
   projectId: ProjectId | null;
@@ -9,9 +9,18 @@ export interface MatchResult {
 export interface MatchContext {
   rules: Rule[];
   overrides: Record<string, ProjectId>;
+  manualEntries: Record<ManualEntryId, ManualEntry>;
 }
 
 export function resolveProject(app: string, title: string, ctx: MatchContext): MatchResult {
+  if (app === MANUAL_APP_NAME) {
+    const entry = ctx.manualEntries[title];
+    if (entry) {
+      return { projectId: entry.projectId, assignedBy: "manual-entry" };
+    }
+    return { projectId: null, assignedBy: "none" };
+  }
+
   const key = activityKey(app, title);
 
   const override = ctx.overrides[key];

@@ -151,6 +151,44 @@ export function SettingsView() {
         </Card>
 
         <Card className="p-5">
+          <h2 className="mb-1 text-sm font-semibold">Daily Review Reminder</h2>
+          <p className="mb-4 text-xs text-muted-foreground">
+            Get a notification at the end of the day to review your tracked time.
+          </p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Enable reminder</span>
+              <Switch
+                checked={settings.reviewNotification.enabled}
+                onCheckedChange={(enabled) =>
+                  updateSettings({
+                    reviewNotification: { ...settings.reviewNotification, enabled },
+                  })
+                }
+              />
+            </div>
+            {settings.reviewNotification.enabled && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground">Remind at</span>
+                <Input
+                  type="time"
+                  value={settings.reviewNotification.time}
+                  onChange={(e) =>
+                    updateSettings({
+                      reviewNotification: {
+                        ...settings.reviewNotification,
+                        time: e.target.value,
+                      },
+                    })
+                  }
+                  className="w-28"
+                />
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-5">
           <h2 className="mb-1 text-sm font-semibold">Data Export</h2>
           <p className="mb-4 text-xs text-muted-foreground">
             Export your tracked activities as CSV or JSON.

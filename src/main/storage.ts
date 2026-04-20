@@ -1,5 +1,5 @@
 import Store from "electron-store";
-import type { Project, ProjectId, Rule, AppSettings } from "@shared/types";
+import type { Project, ProjectId, Rule, AppSettings, ManualEntry, ManualEntryId } from "@shared/types";
 
 interface ProjectsStoreSchema {
   projects: Project[];
@@ -9,6 +9,10 @@ interface ProjectsStoreSchema {
 
 interface TrackingStoreSchema {
   days: Record<string, Record<string, number>>;
+}
+
+interface ManualEntriesStoreSchema {
+  entries: Record<ManualEntryId, ManualEntry>;
 }
 
 const projectsStore = new Store<ProjectsStoreSchema>({
@@ -25,17 +29,36 @@ const trackingStore = new Store<TrackingStoreSchema>({
   defaults: { days: {} },
 });
 
+const DEFAULT_SETTINGS: AppSettings = {
+  trackingIntervalMs: 1000,
+  idle: { enabled: true, timeoutMinutes: 5 },
+  widgetPosition: null,
+  reviewNotification: { enabled: true, time: "17:30" },
+  reviewedDays: {},
+};
+
 const settingsStore = new Store<AppSettings>({
   name: "settings",
-  defaults: {
-    trackingIntervalMs: 1000,
-    idle: { enabled: true, timeoutMinutes: 5 },
-    widgetPosition: null,
-  },
+  defaults: DEFAULT_SETTINGS,
+});
+
+const manualEntriesStore = new Store<ManualEntriesStoreSchema>({
+  name: "manual-entries",
+  defaults: { entries: {} },
 });
 
 export function loadSettings(): AppSettings {
-  return settingsStore.store;
+  const stored = settingsStore.store;
+  return {
+    ...DEFAULT_SETTINGS,
+    ...stored,
+    idle: { ...DEFAULT_SETTINGS.idle, ...(stored.idle ?? {}) },
+    reviewNotification: {
+      ...DEFAULT_SETTINGS.reviewNotification,
+      ...(stored.reviewNotification ?? {}),
+    },
+    reviewedDays: stored.reviewedDays ?? {},
+  };
 }
 
 export function saveSettings(settings: AppSettings): void {
@@ -72,6 +95,14 @@ export function loadTracking(): Record<string, Record<string, number>> {
 
 export function saveTracking(days: Record<string, Record<string, number>>): void {
   trackingStore.set("days", days);
+}
+
+export function loadManualEntries(): Record<ManualEntryId, ManualEntry> {
+  return manualEntriesStore.get("entries");
+}
+
+export function saveManualEntries(entries: Record<ManualEntryId, ManualEntry>): void {
+  manualEntriesStore.set("entries", entries);
 }
 
 export function todayKey(): string {

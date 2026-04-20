@@ -15,11 +15,20 @@ import {
   saveTracking,
   loadSettings,
   saveSettings,
+  loadManualEntries,
+  saveManualEntries,
   todayKey,
   getDateRangeBounds,
   getTrackingForRange,
 } from "./storage.js";
-import { activityKey, parseActivityKey } from "@shared/types";
+import { scheduleReviewNotification } from "./notifications.js";
+import {
+  MANUAL_APP_NAME,
+  activityKey,
+  manualEntryKey,
+  parseActivityKey,
+  parseManualEntryKey,
+} from "@shared/types";
 import type {
   Project,
   Rule,
@@ -37,6 +46,13 @@ import type {
   HistoricalActivity,
   HistoricalState,
   AppSettings,
+  ManualEntry,
+  ManualEntryId,
+  CreateManualEntryInput,
+  UpdateManualEntryInput,
+  DayReviewEntry,
+  DayReviewProjectGroup,
+  DayReviewState,
 } from "@shared/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +65,7 @@ let projects: Project[] = [];
 let rules: Rule[] = [];
 let overrides: Record<string, ProjectId> = {};
 let trackingDays: Record<string, Record<string, number>> = {};
+let manualEntries: Record<ManualEntryId, ManualEntry> = {};
 let currentActivity: CurrentActivity | null = null;
 
 const cache = new MatchCache();
@@ -61,6 +78,14 @@ let lastActivityChangeTime = Date.now();
 let isIdle = false;
 let trackingIntervalId: ReturnType<typeof setInterval> | null = null;
 
+function displayTitleFor(app: string, title: string): string {
+  if (app === MANUAL_APP_NAME) {
+    const entry = manualEntries[title];
+    if (entry) return entry.description || "(untitled)";
+  }
+  return title;
+}
+
 function buildTrackingState(): TrackingState {
   const today = todayKey();
   const todayData = trackingDays[today] ?? {};
@@ -72,10 +97,10 @@ function buildTrackingState(): TrackingState {
     const parsed = parseActivityKey(key);
     if (!parsed) continue;
 
-    const match = cache.get(parsed.app, parsed.title, { rules, overrides });
+    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries });
     activities[key] = {
       app: parsed.app,
-      title: parsed.title,
+      title: displayTitleFor(parsed.app, parsed.title),
       time,
       projectId: match.projectId,
       assignedBy: match.assignedBy,
@@ -118,10 +143,10 @@ function buildHistoricalState(range: DateRange): HistoricalState {
     const parsed = parseActivityKey(key);
     if (!parsed) continue;
 
-    const match = cache.get(parsed.app, parsed.title, { rules, overrides });
+    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries });
     activities[key] = {
       app: parsed.app,
-      title: parsed.title,
+      title: displayTitleFor(parsed.app, parsed.title),
       totalTime,
       projectId: match.projectId,
       assignedBy: match.assignedBy,
@@ -130,6 +155,65 @@ function buildHistoricalState(range: DateRange): HistoricalState {
   }
 
   return { activities, totalSeconds, dateRange: range, startDate: start, endDate: end };
+}
+
+function buildDayReviewState(date: string): DayReviewState {
+  const dayData = trackingDays[date] ?? {};
+
+  const entries: DayReviewEntry[] = [];
+  let totalSeconds = 0;
+
+  for (const [key, seconds] of Object.entries(dayData)) {
+    const parsed = parseActivityKey(key);
+    if (!parsed) continue;
+
+    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries });
+    const manualId = parseManualEntryKey(key);
+    const manualEntry = manualId ? manualEntries[manualId] : undefined;
+
+    entries.push({
+      key,
+      kind: manualEntry ? "manual" : "activity",
+      app: parsed.app,
+      title: manualEntry ? manualEntry.description : parsed.title,
+      description: manualEntry?.description,
+      seconds,
+      projectId: match.projectId,
+      assignedBy: match.assignedBy,
+      manualEntryId: manualId ?? undefined,
+    });
+    totalSeconds += seconds;
+  }
+
+  const byProject = new Map<string | null, DayReviewEntry[]>();
+  for (const entry of entries) {
+    const bucket = byProject.get(entry.projectId) ?? [];
+    bucket.push(entry);
+    byProject.set(entry.projectId, bucket);
+  }
+
+  const groups: DayReviewProjectGroup[] = [];
+  for (const project of projects) {
+    const bucket = byProject.get(project.id);
+    if (!bucket || bucket.length === 0) continue;
+    bucket.sort((a, b) => b.seconds - a.seconds);
+    groups.push({
+      project,
+      entries: bucket,
+      totalSeconds: bucket.reduce((s, e) => s + e.seconds, 0),
+    });
+  }
+  groups.sort((a, b) => b.totalSeconds - a.totalSeconds);
+
+  const unassigned = (byProject.get(null) ?? []).sort((a, b) => b.seconds - a.seconds);
+
+  return {
+    date,
+    totalSeconds,
+    reviewedAt: settings.reviewedDays[date] ?? null,
+    groups,
+    unassigned,
+  };
 }
 
 async function trackLoop(): Promise<void> {
@@ -184,7 +268,7 @@ async function trackLoop(): Promise<void> {
       trackingDays[today][key] = (trackingDays[today][key] ?? 0) + intervalSeconds;
       trackingDirty = true;
 
-      const match = cache.get(app, title, { rules, overrides });
+      const match = cache.get(app, title, { rules, overrides, manualEntries });
       currentActivity = { app, title, projectId: match.projectId };
 
       broadcast();
@@ -264,6 +348,27 @@ function makeWidget(): void {
   widget.on("closed", () => {
     widget = null;
   });
+}
+
+function focusReviewToday(): void {
+  widget?.hide();
+  const date = todayKey();
+  const wasExisting = dashboard !== null;
+  if (!dashboard) makeDashboard();
+  else {
+    if (dashboard.isMinimized()) dashboard.restore();
+    dashboard.show();
+    dashboard.focus();
+  }
+  if (!dashboard) return;
+
+  if (wasExisting) {
+    dashboard.webContents.send("focus-review", date);
+  } else {
+    dashboard.once("ready-to-show", () => {
+      dashboard?.webContents.send("focus-review", date);
+    });
+  }
 }
 
 function makeDashboard(): void {
@@ -494,7 +599,7 @@ function registerIpc(): void {
           const parsed = parseActivityKey(key);
           if (!parsed) continue;
 
-          const match = cache.get(parsed.app, parsed.title, { rules, overrides });
+          const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries });
           const project = match.projectId ? projectMap.get(match.projectId) : undefined;
           rows.push({
             date: day,
@@ -551,19 +656,125 @@ function registerIpc(): void {
     "update-settings",
     (_e, partial: Partial<AppSettings>): AppSettings => {
       const prevInterval = settings.trackingIntervalMs;
+      const prevNotification = settings.reviewNotification;
       settings = {
         ...settings,
         ...partial,
         idle: { ...settings.idle, ...(partial.idle ?? {}) },
+        reviewNotification: {
+          ...settings.reviewNotification,
+          ...(partial.reviewNotification ?? {}),
+        },
       };
       saveSettings(settings);
       if (partial.trackingIntervalMs && partial.trackingIntervalMs !== prevInterval && trackingIntervalId) {
         clearInterval(trackingIntervalId);
         trackLoop();
       }
+      if (
+        partial.reviewNotification &&
+        (prevNotification.enabled !== settings.reviewNotification.enabled ||
+          prevNotification.time !== settings.reviewNotification.time)
+      ) {
+        scheduleReviewNotification(settings.reviewNotification, focusReviewToday);
+      }
       return settings;
     },
   );
+
+  ipcMain.handle("get-review-state", (_e, date: string): DayReviewState => {
+    return buildDayReviewState(date);
+  });
+
+  ipcMain.handle("mark-day-reviewed", (_e, date: string): AppSettings => {
+    settings = {
+      ...settings,
+      reviewedDays: { ...settings.reviewedDays, [date]: Date.now() },
+    };
+    saveSettings(settings);
+    return settings;
+  });
+
+  ipcMain.handle("unmark-day-reviewed", (_e, date: string): AppSettings => {
+    const { [date]: _removed, ...rest } = settings.reviewedDays;
+    settings = { ...settings, reviewedDays: rest };
+    saveSettings(settings);
+    return settings;
+  });
+
+  ipcMain.handle(
+    "add-manual-entry",
+    (_e, input: CreateManualEntryInput): ManualEntry => {
+      const id = nanoid(10);
+      const entry: ManualEntry = {
+        id,
+        date: input.date,
+        description: input.description.trim(),
+        seconds: Math.max(0, Math.round(input.seconds)),
+        projectId: input.projectId,
+        createdAt: Date.now(),
+      };
+      manualEntries = { ...manualEntries, [id]: entry };
+      saveManualEntries(manualEntries);
+
+      if (!trackingDays[input.date]) trackingDays[input.date] = {};
+      trackingDays[input.date][manualEntryKey(id)] = entry.seconds;
+      saveTracking(trackingDays);
+
+      cache.invalidate();
+      broadcast();
+      return entry;
+    },
+  );
+
+  ipcMain.handle(
+    "update-manual-entry",
+    (_e, input: UpdateManualEntryInput): ManualEntry | null => {
+      const existing = manualEntries[input.id];
+      if (!existing) return null;
+
+      const updated: ManualEntry = {
+        ...existing,
+        description:
+          input.description !== undefined ? input.description.trim() : existing.description,
+        seconds:
+          input.seconds !== undefined
+            ? Math.max(0, Math.round(input.seconds))
+            : existing.seconds,
+        projectId: input.projectId !== undefined ? input.projectId : existing.projectId,
+      };
+      manualEntries = { ...manualEntries, [input.id]: updated };
+      saveManualEntries(manualEntries);
+
+      if (!trackingDays[existing.date]) trackingDays[existing.date] = {};
+      trackingDays[existing.date][manualEntryKey(input.id)] = updated.seconds;
+      saveTracking(trackingDays);
+
+      cache.invalidate();
+      broadcast();
+      return updated;
+    },
+  );
+
+  ipcMain.handle("delete-manual-entry", (_e, id: ManualEntryId): void => {
+    const existing = manualEntries[id];
+    if (!existing) return;
+
+    const { [id]: _removed, ...rest } = manualEntries;
+    manualEntries = rest;
+    saveManualEntries(manualEntries);
+
+    const dayData = trackingDays[existing.date];
+    if (dayData) {
+      const key = manualEntryKey(id);
+      const { [key]: _removedSeconds, ...restDay } = dayData;
+      trackingDays[existing.date] = restDay;
+      saveTracking(trackingDays);
+    }
+
+    cache.invalidate();
+    broadcast();
+  });
 
   ipcMain.handle("clear-today-data", (): void => {
     const today = todayKey();
@@ -594,7 +805,10 @@ app.whenReady().then(async () => {
   rules = loadRules();
   overrides = loadOverrides();
   trackingDays = loadTracking();
+  manualEntries = loadManualEntries();
   settings = loadSettings();
+
+  scheduleReviewNotification(settings.reviewNotification, focusReviewToday);
 
   if (process.platform === "darwin" && app.dock) {
     const dockIcon = nativeImage.createFromPath(
