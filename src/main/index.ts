@@ -23,6 +23,12 @@ import {
   saveSuggestions,
   loadDismissedSuggestions,
   saveDismissedSuggestions,
+  loadClients,
+  saveClients,
+  loadInvoices,
+  saveInvoices,
+  loadInvoiceSettings,
+  saveInvoiceSettings,
   todayKey,
   getDateRangeBounds,
   getTrackingForRange,
@@ -36,6 +42,7 @@ import {
 } from "./calendar.js";
 import { LLMSupervisor, llmSidecarAvailable } from "./llm.js";
 import { SuggestionsEngine } from "./suggestions.js";
+import { buildInvoice, renderInvoicePdf, renderExactOnlineJson } from "./invoicing.js";
 import {
   CALENDAR_APP_NAME,
   MANUAL_APP_NAME,
@@ -74,6 +81,16 @@ import type {
   CalendarInfo,
   LlmState,
   Suggestion,
+  Client,
+  ClientId,
+  CreateClientInput,
+  UpdateClientInput,
+  Invoice,
+  InvoiceId,
+  InvoiceSettings,
+  GenerateInvoiceInput,
+  InvoicePreview,
+  UpdateProjectBillingInput,
 } from "@shared/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -92,6 +109,9 @@ let calendarPollIntervalId: ReturnType<typeof setInterval> | null = null;
 let calendarPolling = false;
 let suggestionsByKey: Record<string, Suggestion> = {};
 let dismissedSuggestions: Record<string, number> = {};
+let clients: Record<ClientId, Client> = {};
+let invoices: Record<InvoiceId, Invoice> = {};
+let invoiceSettings: InvoiceSettings;
 let llmSupervisor: LLMSupervisor | null = null;
 let suggestionsEngine: SuggestionsEngine | null = null;
 let suggestionSweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -647,6 +667,9 @@ function registerIpc(): void {
       name: input.name.trim(),
       color: input.color,
       createdAt: Date.now(),
+      clientId: input.clientId,
+      hourlyRateCents: input.hourlyRateCents,
+      billable: input.billable ?? true,
     };
     projects = [...projects, project];
     saveProjects(projects);
@@ -761,6 +784,7 @@ function registerIpc(): void {
         name: input.name.trim(),
         color: input.color,
         createdAt: Date.now(),
+        billable: true,
       };
       projects = [...projects, project];
       saveProjects(projects);
@@ -1026,6 +1050,220 @@ function registerIpc(): void {
     suggestionsEngine?.scheduleRun();
   });
 
+  ipcMain.handle("list-clients", (): Client[] => Object.values(clients));
+
+  ipcMain.handle("create-client", (_e, input: CreateClientInput): Client => {
+    const id = nanoid(10);
+    const client: Client = {
+      id,
+      name: input.name.trim(),
+      email: input.email,
+      addressLine1: input.addressLine1,
+      addressLine2: input.addressLine2,
+      city: input.city,
+      postalCode: input.postalCode,
+      country: input.country,
+      vatNumber: input.vatNumber,
+      currency: input.currency ?? "EUR",
+      defaultHourlyRateCents: input.defaultHourlyRateCents,
+      createdAt: Date.now(),
+    };
+    clients = { ...clients, [id]: client };
+    saveClients(clients);
+    broadcast();
+    return client;
+  });
+
+  ipcMain.handle("update-client", (_e, input: UpdateClientInput): Client | null => {
+    const existing = clients[input.id];
+    if (!existing) return null;
+    const updated: Client = {
+      ...existing,
+      name: input.name !== undefined ? input.name.trim() : existing.name,
+      email: input.email !== undefined ? input.email : existing.email,
+      addressLine1:
+        input.addressLine1 !== undefined ? input.addressLine1 : existing.addressLine1,
+      addressLine2:
+        input.addressLine2 !== undefined ? input.addressLine2 : existing.addressLine2,
+      city: input.city !== undefined ? input.city : existing.city,
+      postalCode:
+        input.postalCode !== undefined ? input.postalCode : existing.postalCode,
+      country: input.country !== undefined ? input.country : existing.country,
+      vatNumber: input.vatNumber !== undefined ? input.vatNumber : existing.vatNumber,
+      currency: input.currency !== undefined ? input.currency : existing.currency,
+      defaultHourlyRateCents:
+        input.defaultHourlyRateCents === null
+          ? undefined
+          : input.defaultHourlyRateCents ?? existing.defaultHourlyRateCents,
+    };
+    clients = { ...clients, [input.id]: updated };
+    saveClients(clients);
+    broadcast();
+    return updated;
+  });
+
+  ipcMain.handle("delete-client", (_e, id: ClientId): void => {
+    const { [id]: _removed, ...rest } = clients;
+    clients = rest;
+    saveClients(clients);
+    projects = projects.map((p) =>
+      p.clientId === id ? { ...p, clientId: undefined } : p,
+    );
+    saveProjects(projects);
+    cache.invalidate();
+    broadcast();
+  });
+
+  ipcMain.handle(
+    "update-project-billing",
+    (_e, input: UpdateProjectBillingInput): Project | null => {
+      let updated: Project | null = null;
+      projects = projects.map((p) => {
+        if (p.id !== input.id) return p;
+        const next: Project = { ...p };
+        if (input.clientId !== undefined) {
+          next.clientId = input.clientId === null ? undefined : input.clientId;
+        }
+        if (input.hourlyRateCents !== undefined) {
+          next.hourlyRateCents =
+            input.hourlyRateCents === null ? undefined : input.hourlyRateCents;
+        }
+        if (input.billable !== undefined) {
+          next.billable = input.billable;
+        }
+        updated = next;
+        return next;
+      });
+      saveProjects(projects);
+      broadcast();
+      return updated;
+    },
+  );
+
+  ipcMain.handle(
+    "get-invoice-settings",
+    (): InvoiceSettings => invoiceSettings,
+  );
+
+  ipcMain.handle(
+    "update-invoice-settings",
+    (_e, partial: Partial<InvoiceSettings>): InvoiceSettings => {
+      invoiceSettings = {
+        ...invoiceSettings,
+        ...partial,
+        company: { ...invoiceSettings.company, ...(partial.company ?? {}) },
+      };
+      saveInvoiceSettings(invoiceSettings);
+      return invoiceSettings;
+    },
+  );
+
+  ipcMain.handle("list-invoices", (): Invoice[] =>
+    Object.values(invoices).sort((a, b) => b.createdAt - a.createdAt),
+  );
+
+  ipcMain.handle(
+    "generate-invoice-preview",
+    (_e, input: GenerateInvoiceInput): InvoicePreview => {
+      const client = clients[input.clientId];
+      if (!client) {
+        throw new Error("Client not found");
+      }
+      const grouping = input.grouping ?? invoiceSettings.defaultGrouping;
+      const rounding = input.rounding ?? invoiceSettings.defaultRounding;
+      const invoiceNumber =
+        input.invoiceNumber?.trim() ||
+        `${invoiceSettings.numberPrefix}${invoiceSettings.nextNumber
+          .toString()
+          .padStart(4, "0")}`;
+      return buildInvoice({
+        client,
+        projects,
+        trackingDays,
+        ctx: {
+          projects,
+          overrides,
+          manualEntries,
+          calendarEvents,
+          rules,
+        },
+        startDate: input.startDate,
+        endDate: input.endDate,
+        grouping,
+        rounding,
+        invoiceSettings,
+        input,
+        invoiceNumber,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "save-invoice",
+    (_e, invoice: Invoice): Invoice => {
+      invoices = { ...invoices, [invoice.id]: invoice };
+      saveInvoices(invoices);
+      if (invoice.number.startsWith(invoiceSettings.numberPrefix)) {
+        const suffix = invoice.number.slice(invoiceSettings.numberPrefix.length);
+        const parsed = parseInt(suffix, 10);
+        if (!Number.isNaN(parsed) && parsed >= invoiceSettings.nextNumber) {
+          invoiceSettings = { ...invoiceSettings, nextNumber: parsed + 1 };
+          saveInvoiceSettings(invoiceSettings);
+        }
+      }
+      return invoice;
+    },
+  );
+
+  ipcMain.handle(
+    "delete-invoice",
+    (_e, id: InvoiceId): void => {
+      const { [id]: _removed, ...rest } = invoices;
+      invoices = rest;
+      saveInvoices(invoices);
+    },
+  );
+
+  ipcMain.handle(
+    "export-invoice-pdf",
+    async (_e, invoice: Invoice): Promise<{ success: boolean; filePath?: string }> => {
+      const result = await dialog.showSaveDialog({
+        title: "Export Invoice PDF",
+        defaultPath: `${invoice.number}.pdf`,
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false };
+      try {
+        const bytes = await renderInvoicePdf(invoice);
+        await fs.writeFile(result.filePath, bytes);
+        return { success: true, filePath: result.filePath };
+      } catch (err) {
+        console.error("invoice pdf export failed", err);
+        return { success: false };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "export-invoice-json",
+    async (_e, invoice: Invoice): Promise<{ success: boolean; filePath?: string }> => {
+      const result = await dialog.showSaveDialog({
+        title: "Export Invoice JSON (Exact Online)",
+        defaultPath: `${invoice.number}.json`,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false };
+      try {
+        const text = renderExactOnlineJson(invoice);
+        await fs.writeFile(result.filePath, text, "utf-8");
+        return { success: true, filePath: result.filePath };
+      } catch (err) {
+        console.error("invoice json export failed", err);
+        return { success: false };
+      }
+    },
+  );
+
   ipcMain.handle("mark-day-reviewed", (_e, date: string): AppSettings => {
     settings = {
       ...settings,
@@ -1149,6 +1387,9 @@ app.whenReady().then(async () => {
   calendarEvents = loadCalendarEvents();
   suggestionsByKey = loadSuggestions();
   dismissedSuggestions = loadDismissedSuggestions();
+  clients = loadClients();
+  invoices = loadInvoices();
+  invoiceSettings = loadInvoiceSettings();
   settings = loadSettings();
 
   scheduleReviewNotification(settings.reviewNotification, focusReviewToday);

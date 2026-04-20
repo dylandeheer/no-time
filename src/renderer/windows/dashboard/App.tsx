@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { Activity, ClipboardCheck, FolderKanban, Pause, Play, Settings as SettingsIcon } from "lucide-react";
+import {
+  Activity,
+  ClipboardCheck,
+  FileText,
+  FolderKanban,
+  Pause,
+  Play,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { useTrackingState } from "@renderer/hooks/useTrackingState";
 import { formatTime } from "@renderer/lib/format";
 import { cn } from "@renderer/lib/utils";
@@ -10,9 +18,10 @@ import { ActivitiesView } from "./views/ActivitiesView";
 import { ProjectsView } from "./views/ProjectsView";
 import { ProjectDetailView } from "./views/ProjectDetailView";
 import { ReviewView } from "./views/ReviewView";
+import { InvoicesView } from "./views/InvoicesView";
 import { SettingsView } from "./views/SettingsView";
 
-type View = "activities" | "projects" | "review" | "settings";
+type View = "activities" | "projects" | "review" | "invoices" | "settings";
 
 export function App() {
   const state = useTrackingState();
@@ -42,7 +51,8 @@ export function App() {
       if (e.key === "1") { e.preventDefault(); setView("projects"); setDetailProjectId(null); }
       if (e.key === "2") { e.preventDefault(); setView("activities"); setDetailProjectId(null); }
       if (e.key === "3") { e.preventDefault(); setView("review"); setDetailProjectId(null); }
-      if (e.key === "4") { e.preventDefault(); setView("settings"); setDetailProjectId(null); }
+      if (e.key === "4") { e.preventDefault(); setView("invoices"); setDetailProjectId(null); }
+      if (e.key === "5") { e.preventDefault(); setView("settings"); setDetailProjectId(null); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -91,6 +101,15 @@ export function App() {
               active={view === "review"}
               onClick={() => {
                 setView("review");
+                setDetailProjectId(null);
+              }}
+            />
+            <NavButton
+              icon={<FileText className="h-4 w-4" />}
+              label="Invoices"
+              active={view === "invoices"}
+              onClick={() => {
+                setView("invoices");
                 setDetailProjectId(null);
               }}
             />
@@ -171,6 +190,7 @@ export function App() {
             )}
             {view === "activities" && <ActivitiesView state={state} />}
             {view === "review" && <ReviewView state={state} initialDate={reviewDate} />}
+            {view === "invoices" && <InvoicesView />}
             {view === "settings" && <SettingsView />}
           </div>
         </main>

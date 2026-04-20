@@ -22,6 +22,16 @@ import type {
   CalendarInfo,
   LlmState,
   Suggestion,
+  Client,
+  ClientId,
+  CreateClientInput,
+  UpdateClientInput,
+  Invoice,
+  InvoiceId,
+  InvoiceSettings,
+  GenerateInvoiceInput,
+  InvoicePreview,
+  UpdateProjectBillingInput,
 } from "../shared/types.js";
 
 type TrackingListener = (state: TrackingState) => void;
@@ -161,6 +171,47 @@ const api = {
     ipcRenderer.invoke("clear-dismissed-suggestions"),
 
   runSuggestionSweep: (): Promise<void> => ipcRenderer.invoke("run-suggestion-sweep"),
+
+  listClients: (): Promise<Client[]> => ipcRenderer.invoke("list-clients"),
+
+  createClient: (input: CreateClientInput): Promise<Client> =>
+    ipcRenderer.invoke("create-client", input),
+
+  updateClient: (input: UpdateClientInput): Promise<Client | null> =>
+    ipcRenderer.invoke("update-client", input),
+
+  deleteClient: (id: ClientId): Promise<void> =>
+    ipcRenderer.invoke("delete-client", id),
+
+  updateProjectBilling: (input: UpdateProjectBillingInput): Promise<Project | null> =>
+    ipcRenderer.invoke("update-project-billing", input),
+
+  getInvoiceSettings: (): Promise<InvoiceSettings> =>
+    ipcRenderer.invoke("get-invoice-settings"),
+
+  updateInvoiceSettings: (partial: Partial<InvoiceSettings>): Promise<InvoiceSettings> =>
+    ipcRenderer.invoke("update-invoice-settings", partial),
+
+  listInvoices: (): Promise<Invoice[]> => ipcRenderer.invoke("list-invoices"),
+
+  generateInvoicePreview: (input: GenerateInvoiceInput): Promise<InvoicePreview> =>
+    ipcRenderer.invoke("generate-invoice-preview", input),
+
+  saveInvoice: (invoice: Invoice): Promise<Invoice> =>
+    ipcRenderer.invoke("save-invoice", invoice),
+
+  deleteInvoice: (id: InvoiceId): Promise<void> =>
+    ipcRenderer.invoke("delete-invoice", id),
+
+  exportInvoicePdf: (
+    invoice: Invoice,
+  ): Promise<{ success: boolean; filePath?: string }> =>
+    ipcRenderer.invoke("export-invoice-pdf", invoice),
+
+  exportInvoiceJson: (
+    invoice: Invoice,
+  ): Promise<{ success: boolean; filePath?: string }> =>
+    ipcRenderer.invoke("export-invoice-json", invoice),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);
