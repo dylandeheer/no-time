@@ -19,6 +19,10 @@ import {
   saveManualEntries,
   loadCalendarEvents,
   saveCalendarEvents,
+  loadSuggestions,
+  saveSuggestions,
+  loadDismissedSuggestions,
+  saveDismissedSuggestions,
   todayKey,
   getDateRangeBounds,
   getTrackingForRange,
@@ -30,6 +34,8 @@ import {
   listEvents as calendarListEvents,
   mergeCalendarEvents,
 } from "./calendar.js";
+import { LLMSupervisor, llmSidecarAvailable } from "./llm.js";
+import { SuggestionsEngine } from "./suggestions.js";
 import {
   CALENDAR_APP_NAME,
   MANUAL_APP_NAME,
@@ -66,6 +72,8 @@ import type {
   CalendarAuthStatus,
   CalendarEvent,
   CalendarInfo,
+  LlmState,
+  Suggestion,
 } from "@shared/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -82,6 +90,11 @@ let manualEntries: Record<ManualEntryId, ManualEntry> = {};
 let calendarEvents: Record<string, CalendarEvent> = {};
 let calendarPollIntervalId: ReturnType<typeof setInterval> | null = null;
 let calendarPolling = false;
+let suggestionsByKey: Record<string, Suggestion> = {};
+let dismissedSuggestions: Record<string, number> = {};
+let llmSupervisor: LLMSupervisor | null = null;
+let suggestionsEngine: SuggestionsEngine | null = null;
+let suggestionSweepTimer: ReturnType<typeof setInterval> | null = null;
 let currentActivity: CurrentActivity | null = null;
 
 const cache = new MatchCache();
@@ -205,6 +218,11 @@ function buildDayReviewState(date: string): DayReviewState {
       title = calendarEvent.title;
     }
 
+    const suggestion =
+      match.projectId === null && match.assignedBy === "none"
+        ? suggestionsByKey[key]
+        : undefined;
+
     entries.push({
       key,
       kind,
@@ -225,6 +243,7 @@ function buildDayReviewState(date: string): DayReviewState {
             location: calendarEvent.location ?? undefined,
           }
         : undefined,
+      suggestion,
     });
     totalSeconds += seconds;
   }
@@ -322,6 +341,82 @@ function stopCalendarPolling(): void {
     clearInterval(calendarPollIntervalId);
     calendarPollIntervalId = null;
   }
+}
+
+const SUGGESTION_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+
+function ensureLlmSupervisor(): LLMSupervisor {
+  if (!llmSupervisor) {
+    llmSupervisor = new LLMSupervisor(settings.suggestions.modelId);
+    llmSupervisor.onState((state) => {
+      dashboard?.webContents.send("llm-state", state);
+    });
+  }
+  return llmSupervisor;
+}
+
+function ensureSuggestionsEngine(): SuggestionsEngine {
+  if (!suggestionsEngine) {
+    const llm = ensureLlmSupervisor();
+    suggestionsEngine = new SuggestionsEngine({
+      llm,
+      getTrackingDays: () => trackingDays,
+      getSettings: () => settings.suggestions,
+      getProjects: () => projects,
+      getOverrides: () => overrides,
+      getAssignedBy: (key) => {
+        const parsed = parseActivityKey(key);
+        if (!parsed) return "none";
+        const match = cache.get(parsed.app, parsed.title, {
+          rules,
+          overrides,
+          manualEntries,
+          calendarEvents,
+        });
+        return match.assignedBy;
+      },
+      getSuggestions: () => suggestionsByKey,
+      setSuggestions: (next) => {
+        suggestionsByKey = next;
+        saveSuggestions(suggestionsByKey);
+      },
+      getDismissed: () => dismissedSuggestions,
+      setDismissed: (next) => {
+        dismissedSuggestions = next;
+        saveDismissedSuggestions(dismissedSuggestions);
+      },
+      onSuggestionsChanged: () => {
+        broadcast();
+      },
+    });
+  }
+  return suggestionsEngine;
+}
+
+function startSuggestions(): void {
+  if (!settings.suggestions.enabled) return;
+  if (!llmSidecarAvailable()) return;
+  const supervisor = ensureLlmSupervisor();
+  supervisor.setModelId(settings.suggestions.modelId);
+  supervisor.start();
+  ensureSuggestionsEngine();
+  scheduleSuggestionSweep();
+  suggestionsEngine?.scheduleRun();
+}
+
+function stopSuggestions(): void {
+  if (suggestionSweepTimer) {
+    clearInterval(suggestionSweepTimer);
+    suggestionSweepTimer = null;
+  }
+  llmSupervisor?.stop();
+}
+
+function scheduleSuggestionSweep(): void {
+  if (suggestionSweepTimer) return;
+  suggestionSweepTimer = setInterval(() => {
+    suggestionsEngine?.scheduleRun();
+  }, SUGGESTION_SWEEP_INTERVAL_MS);
 }
 
 function clearAllCalendarEntries(): void {
@@ -599,6 +694,7 @@ function registerIpc(): void {
   ipcMain.handle("assign-activity", (_e, { activityKey: key, projectId }: AssignActivityInput): void => {
     overrides = { ...overrides, [key]: projectId };
     saveOverrides(overrides);
+    suggestionsEngine?.clearSuggestionForKey(key);
     cache.invalidate();
     broadcast();
   });
@@ -787,6 +883,7 @@ function registerIpc(): void {
       const prevInterval = settings.trackingIntervalMs;
       const prevNotification = settings.reviewNotification;
       const prevCalendar = settings.calendar;
+      const prevSuggestions = settings.suggestions;
       settings = {
         ...settings,
         ...partial,
@@ -796,6 +893,7 @@ function registerIpc(): void {
           ...(partial.reviewNotification ?? {}),
         },
         calendar: { ...settings.calendar, ...(partial.calendar ?? {}) },
+        suggestions: { ...settings.suggestions, ...(partial.suggestions ?? {}) },
       };
       saveSettings(settings);
       if (partial.trackingIntervalMs && partial.trackingIntervalMs !== prevInterval && trackingIntervalId) {
@@ -822,6 +920,21 @@ function registerIpc(): void {
             broadcast();
           } else {
             startCalendarPolling();
+          }
+        }
+      }
+      if (partial.suggestions) {
+        const suggestionsChanged =
+          prevSuggestions.enabled !== settings.suggestions.enabled ||
+          prevSuggestions.modelId !== settings.suggestions.modelId;
+        if (suggestionsChanged) {
+          if (settings.suggestions.enabled) {
+            startSuggestions();
+          } else {
+            stopSuggestions();
+            suggestionsByKey = {};
+            saveSuggestions(suggestionsByKey);
+            broadcast();
           }
         }
       }
@@ -856,6 +969,61 @@ function registerIpc(): void {
 
   ipcMain.handle("calendar-sync", async (): Promise<void> => {
     await runCalendarSync();
+  });
+
+  ipcMain.handle("llm-state", (): LlmState => {
+    if (!llmSidecarAvailable()) {
+      return {
+        status: "unavailable",
+        modelId: null,
+        message: "LLM sidecar binary not found. Run `npm run build:sidecars`.",
+      };
+    }
+    if (!settings.suggestions.enabled) {
+      return { status: "disabled", modelId: null };
+    }
+    return ensureLlmSupervisor().getState();
+  });
+
+  ipcMain.handle("llm-restart", (): void => {
+    if (!settings.suggestions.enabled) return;
+    ensureLlmSupervisor().restart();
+  });
+
+  ipcMain.handle("get-suggestions", (): Record<string, Suggestion> => {
+    return suggestionsByKey;
+  });
+
+  ipcMain.handle(
+    "accept-suggestion",
+    (_e, activityKey: string): Suggestion | null => {
+      const accepted = suggestionsEngine?.acceptSuggestion(activityKey) ?? null;
+      if (accepted) {
+        overrides = { ...overrides, [activityKey]: accepted.projectId };
+        saveOverrides(overrides);
+        cache.invalidate();
+        broadcast();
+      }
+      return accepted;
+    },
+  );
+
+  ipcMain.handle("dismiss-suggestion", (_e, activityKey: string): void => {
+    suggestionsEngine?.dismissSuggestion(activityKey);
+  });
+
+  ipcMain.handle(
+    "clear-dismissed-suggestions",
+    (): void => {
+      dismissedSuggestions = {};
+      saveDismissedSuggestions(dismissedSuggestions);
+      suggestionsEngine?.scheduleRun();
+      broadcast();
+    },
+  );
+
+  ipcMain.handle("run-suggestion-sweep", (): void => {
+    suggestionsEngine?.scheduleRun();
   });
 
   ipcMain.handle("mark-day-reviewed", (_e, date: string): AppSettings => {
@@ -979,10 +1147,15 @@ app.whenReady().then(async () => {
   trackingDays = loadTracking();
   manualEntries = loadManualEntries();
   calendarEvents = loadCalendarEvents();
+  suggestionsByKey = loadSuggestions();
+  dismissedSuggestions = loadDismissedSuggestions();
   settings = loadSettings();
 
   scheduleReviewNotification(settings.reviewNotification, focusReviewToday);
   startCalendarPolling();
+  if (settings.suggestions.enabled && llmSidecarAvailable()) {
+    startSuggestions();
+  }
 
   if (process.platform === "darwin" && app.dock) {
     const dockIcon = nativeImage.createFromPath(
@@ -1037,6 +1210,7 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
   globalShortcut.unregisterAll();
   stopCalendarPolling();
+  stopSuggestions();
   if (trackingDirty) saveTracking(trackingDays);
 });
 

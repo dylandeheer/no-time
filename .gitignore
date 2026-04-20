@@ -9,3 +9,5 @@ release
 .DS_Store
 *.log
 assets/bin/
+sidecars/llm/.build/
+sidecars/llm/Package.resolved

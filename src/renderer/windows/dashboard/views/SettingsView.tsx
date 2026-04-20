@@ -25,6 +25,7 @@ import {
 } from "@renderer/components/ui/alert-dialog";
 import { DateRangeSelector } from "@renderer/components/DateRangeSelector";
 import { CalendarSettingsCard } from "@renderer/components/settings/CalendarSettingsCard";
+import { SuggestionsSettingsCard } from "@renderer/components/settings/SuggestionsSettingsCard";
 import { toast } from "sonner";
 
 const INTERVAL_OPTIONS = [
@@ -190,6 +191,8 @@ export function SettingsView() {
         </Card>
 
         <CalendarSettingsCard settings={settings} onUpdate={updateSettings} />
+
+        <SuggestionsSettingsCard settings={settings} onUpdate={updateSettings} />
 
         <Card className="p-5">
           <h2 className="mb-1 text-sm font-semibold">Data Export</h2>

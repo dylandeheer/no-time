@@ -20,10 +20,13 @@ import type {
   DayReviewState,
   CalendarAuthStatus,
   CalendarInfo,
+  LlmState,
+  Suggestion,
 } from "../shared/types.js";
 
 type TrackingListener = (state: TrackingState) => void;
 type FocusReviewListener = (date: string) => void;
+type LlmStateListener = (state: LlmState) => void;
 
 const api = {
   getState: (): Promise<TrackingState> => ipcRenderer.invoke("get-state"),
@@ -134,6 +137,30 @@ const api = {
   calendarList: (): Promise<CalendarInfo[]> => ipcRenderer.invoke("calendar-list"),
 
   calendarSync: (): Promise<void> => ipcRenderer.invoke("calendar-sync"),
+
+  llmState: (): Promise<LlmState> => ipcRenderer.invoke("llm-state"),
+
+  llmRestart: (): Promise<void> => ipcRenderer.invoke("llm-restart"),
+
+  onLlmState: (listener: LlmStateListener): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, state: LlmState): void => listener(state);
+    ipcRenderer.on("llm-state", handler);
+    return () => ipcRenderer.off("llm-state", handler);
+  },
+
+  getSuggestions: (): Promise<Record<string, Suggestion>> =>
+    ipcRenderer.invoke("get-suggestions"),
+
+  acceptSuggestion: (activityKey: string): Promise<Suggestion | null> =>
+    ipcRenderer.invoke("accept-suggestion", activityKey),
+
+  dismissSuggestion: (activityKey: string): Promise<void> =>
+    ipcRenderer.invoke("dismiss-suggestion", activityKey),
+
+  clearDismissedSuggestions: (): Promise<void> =>
+    ipcRenderer.invoke("clear-dismissed-suggestions"),
+
+  runSuggestionSweep: (): Promise<void> => ipcRenderer.invoke("run-suggestion-sweep"),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

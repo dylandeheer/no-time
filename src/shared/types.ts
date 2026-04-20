@@ -19,7 +19,13 @@ export interface Rule {
   calendarId?: string;
 }
 
-export type AssignedBy = "rule" | "manual" | "manual-entry" | "calendar-rule" | "none";
+export type AssignedBy =
+  | "rule"
+  | "manual"
+  | "manual-entry"
+  | "calendar-rule"
+  | "suggestion-accepted"
+  | "none";
 
 export type ManualEntryId = string;
 
@@ -147,6 +153,7 @@ export interface AppSettings {
   reviewNotification: ReviewNotificationSettings;
   reviewedDays: Record<string, number>;
   calendar: CalendarSettings;
+  suggestions: SuggestionsSettings;
 }
 
 export interface DayReviewEntry {
@@ -167,6 +174,7 @@ export interface DayReviewEntry {
     end: string;
     location?: string;
   };
+  suggestion?: Suggestion;
 }
 
 export interface DayReviewProjectGroup {
@@ -243,4 +251,33 @@ export interface CalendarSettings {
   enabled: boolean;
   includeAllDay: boolean;
   enabledCalendarIds: string[];
+}
+
+export interface SuggestionsSettings {
+  enabled: boolean;
+  minSecondsThreshold: number;
+  modelId: string;
+}
+
+export type LlmStatus =
+  | "disabled"
+  | "unavailable"
+  | "loading"
+  | "downloading"
+  | "ready"
+  | "error";
+
+export interface LlmState {
+  status: LlmStatus;
+  modelId: string | null;
+  message?: string;
+}
+
+export interface Suggestion {
+  activityKey: string;
+  projectId: ProjectId;
+  confidence: number;
+  reason: string;
+  createdAt: number;
+  modelId: string;
 }

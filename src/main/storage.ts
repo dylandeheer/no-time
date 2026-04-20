@@ -7,6 +7,7 @@ import type {
   ManualEntry,
   ManualEntryId,
   CalendarEvent,
+  Suggestion,
 } from "@shared/types";
 
 interface ProjectsStoreSchema {
@@ -25,6 +26,11 @@ interface ManualEntriesStoreSchema {
 
 interface CalendarCacheStoreSchema {
   events: Record<string, CalendarEvent>;
+}
+
+interface SuggestionsStoreSchema {
+  byActivity: Record<string, Suggestion>;
+  dismissed: Record<string, number>;
 }
 
 const projectsStore = new Store<ProjectsStoreSchema>({
@@ -52,6 +58,11 @@ const DEFAULT_SETTINGS: AppSettings = {
     includeAllDay: false,
     enabledCalendarIds: [],
   },
+  suggestions: {
+    enabled: false,
+    minSecondsThreshold: 300,
+    modelId: "mlx-community/Qwen3-0.6B-MLX-4bit",
+  },
 };
 
 const settingsStore = new Store<AppSettings>({
@@ -69,6 +80,11 @@ const calendarCacheStore = new Store<CalendarCacheStoreSchema>({
   defaults: { events: {} },
 });
 
+const suggestionsStore = new Store<SuggestionsStoreSchema>({
+  name: "suggestions",
+  defaults: { byActivity: {}, dismissed: {} },
+});
+
 export function loadSettings(): AppSettings {
   const stored = settingsStore.store;
   return {
@@ -81,6 +97,10 @@ export function loadSettings(): AppSettings {
     },
     reviewedDays: stored.reviewedDays ?? {},
     calendar: { ...DEFAULT_SETTINGS.calendar, ...(stored.calendar ?? {}) },
+    suggestions: {
+      ...DEFAULT_SETTINGS.suggestions,
+      ...(stored.suggestions ?? {}),
+    },
   };
 }
 
@@ -134,6 +154,22 @@ export function loadCalendarEvents(): Record<string, CalendarEvent> {
 
 export function saveCalendarEvents(events: Record<string, CalendarEvent>): void {
   calendarCacheStore.set("events", events);
+}
+
+export function loadSuggestions(): Record<string, Suggestion> {
+  return suggestionsStore.get("byActivity");
+}
+
+export function saveSuggestions(byActivity: Record<string, Suggestion>): void {
+  suggestionsStore.set("byActivity", byActivity);
+}
+
+export function loadDismissedSuggestions(): Record<string, number> {
+  return suggestionsStore.get("dismissed");
+}
+
+export function saveDismissedSuggestions(dismissed: Record<string, number>): void {
+  suggestionsStore.set("dismissed", dismissed);
 }
 
 export function todayKey(): string {

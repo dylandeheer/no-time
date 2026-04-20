@@ -14,6 +14,7 @@ extraResources:
     to: bin
     filter:
       - "no-time-calendar"
+      - "no-time-llm"
 
 mac:
   category: public.app-category.productivity

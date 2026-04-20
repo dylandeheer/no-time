@@ -2,6 +2,7 @@ import { CalendarDays, Pencil } from "lucide-react";
 import type { DayReviewEntry, Project } from "@shared/types";
 import { formatTime } from "@renderer/lib/format";
 import { AssignmentDropdown } from "@renderer/components/activity/AssignmentDropdown";
+import { SuggestionChip } from "./SuggestionChip";
 
 interface Props {
   entry: DayReviewEntry;
@@ -72,7 +73,13 @@ export function ReviewEntryRow({ entry, project, projects, onEditManual }: Props
       <div className="shrink-0 font-mono text-sm tabular-nums text-muted-foreground">
         {formatTime(entry.seconds)}
       </div>
-      <div className="shrink-0">
+      <div className="flex shrink-0 items-center gap-2">
+        {entry.suggestion && !entry.projectId && (
+          <SuggestionChip
+            suggestion={entry.suggestion}
+            project={projects.find((p) => p.id === entry.suggestion!.projectId)}
+          />
+        )}
         {isManual && entry.manualEntryId ? (
           <button
             onClick={() => onEditManual?.(entry.manualEntryId!)}
