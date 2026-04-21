@@ -38,12 +38,14 @@ export function AssignmentDropdown({ activity, project, projects, activityKey }:
       await window.electronAPI.assignActivity({ activityKey: key, projectId });
       const target = projects.find((p) => p.id === projectId);
       const titleForRule = activity.title.trim();
-      const truncated =
-        titleForRule.length > 36 ? `${titleForRule.slice(0, 36)}…` : titleForRule;
-      toast.success(`Assigned to "${target?.name}"`, {
+      const truncate = (s: string, n: number): string =>
+        s.length > n ? `${s.slice(0, n)}…` : s;
+      const projectLabel = truncate(target?.name ?? "project", 32);
+      const titleLabel = truncate(titleForRule, 28);
+      toast.success(`Assigned to "${projectLabel}"`, {
         action: titleForRule
           ? {
-              label: `Auto-assign titles matching "${truncated}"?`,
+              label: `Always for "${titleLabel}"`,
               onClick: async () => {
                 try {
                   await window.electronAPI.createRule({
@@ -51,7 +53,7 @@ export function AssignmentDropdown({ activity, project, projects, activityKey }:
                     type: "keyword",
                     pattern: titleForRule,
                   });
-                  toast.success(`Rule created for "${truncated}"`);
+                  toast.success(`Rule created for "${titleLabel}"`);
                 } catch {
                   toast.error("Failed to create rule");
                 }
