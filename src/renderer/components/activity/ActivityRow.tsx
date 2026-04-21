@@ -1,5 +1,5 @@
 import { CalendarDays } from "lucide-react";
-import type { ActivitySummary, Project } from "@shared/types";
+import type { ActivitySummary, Project, Rule } from "@shared/types";
 import { CALENDAR_APP_NAME, MANUAL_APP_NAME } from "@shared/types";
 import { formatTime } from "@renderer/lib/format";
 import { AssignmentDropdown } from "./AssignmentDropdown";
@@ -8,9 +8,10 @@ interface Props {
   activity: ActivitySummary;
   project: Project | null;
   projects: Project[];
+  rules?: Rule[];
 }
 
-export function ActivityRow({ activity, project, projects }: Props) {
+export function ActivityRow({ activity, project, projects, rules }: Props) {
   const isCalendar = activity.app === CALENDAR_APP_NAME;
   const isManualEntry = activity.app === MANUAL_APP_NAME;
 
@@ -27,7 +28,7 @@ export function ActivityRow({ activity, project, projects }: Props) {
               className="rounded-sm bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-sky-400"
               title="From Calendar"
             >
-              Meeting
+              Event
             </span>
           )}
           {isManualEntry && (
@@ -57,6 +58,7 @@ export function ActivityRow({ activity, project, projects }: Props) {
           activity={activity}
           project={project}
           projects={projects}
+          rules={rules}
           activityKey={activity.key}
         />
       </div>

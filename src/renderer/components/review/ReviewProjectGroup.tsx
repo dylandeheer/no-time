@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import type { DayReviewEntry, Project } from "@shared/types";
+import type { DayReviewEntry, Project, Rule } from "@shared/types";
 import { formatTime } from "@renderer/lib/format";
 import { cn } from "@renderer/lib/utils";
 import { ReviewEntryRow } from "./ReviewEntryRow";
@@ -9,6 +9,7 @@ interface Props {
   project: Project | null;
   entries: DayReviewEntry[];
   projects: Project[];
+  rules?: Rule[];
   totalSeconds: number;
   defaultOpen?: boolean;
   onEditManual?: (manualEntryId: string) => void;
@@ -18,6 +19,7 @@ export function ReviewProjectGroup({
   project,
   entries,
   projects,
+  rules,
   totalSeconds,
   defaultOpen = true,
   onEditManual,
@@ -62,6 +64,7 @@ export function ReviewProjectGroup({
                   entry={entry}
                   project={project}
                   projects={projects}
+                  rules={rules}
                   onEditManual={onEditManual}
                 />
               ))}

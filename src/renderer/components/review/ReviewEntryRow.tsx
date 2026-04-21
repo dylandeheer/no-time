@@ -1,5 +1,5 @@
 import { CalendarDays, Pencil } from "lucide-react";
-import type { DayReviewEntry, Project } from "@shared/types";
+import type { DayReviewEntry, Project, Rule } from "@shared/types";
 import { formatTime } from "@renderer/lib/format";
 import { AssignmentDropdown } from "@renderer/components/activity/AssignmentDropdown";
 import { SuggestionChip } from "./SuggestionChip";
@@ -8,6 +8,7 @@ interface Props {
   entry: DayReviewEntry;
   project: Project | null;
   projects: Project[];
+  rules?: Rule[];
   onEditManual?: (manualEntryId: string) => void;
 }
 
@@ -22,7 +23,7 @@ function formatEventTimeRange(start: string, end: string): string {
   }
 }
 
-export function ReviewEntryRow({ entry, project, projects, onEditManual }: Props) {
+export function ReviewEntryRow({ entry, project, projects, rules, onEditManual }: Props) {
   const isManual = entry.kind === "manual";
   const isCalendar = entry.kind === "calendar";
 
@@ -47,7 +48,7 @@ export function ReviewEntryRow({ entry, project, projects, onEditManual }: Props
               className="rounded-sm bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-sky-400"
               title="From Calendar"
             >
-              Meeting
+              Event
             </span>
           )}
           {!isManual && !isCalendar && entry.assignedBy === "manual" && (
@@ -101,6 +102,7 @@ export function ReviewEntryRow({ entry, project, projects, onEditManual }: Props
             }}
             project={project}
             projects={projects}
+            rules={rules}
             activityKey={entry.key}
           />
         )}

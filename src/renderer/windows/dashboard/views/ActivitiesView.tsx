@@ -118,13 +118,19 @@ export function ActivitiesView({ state, onNavigateReview }: Props) {
             <ProjectGroup
               key={g.project.id}
               project={g.project}
-              activities={g.activities }
+              activities={g.activities}
               projects={state.projects}
+              rules={state.rules}
             />
           ))}
 
           {unassigned.length > 0 && (
-            <ProjectGroup project={null} activities={unassigned} projects={state.projects} />
+            <ProjectGroup
+              project={null}
+              activities={unassigned}
+              projects={state.projects}
+              rules={state.rules}
+            />
           )}
         </div>
       )}

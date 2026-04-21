@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import type { ActivitySummary, Project } from "@shared/types";
+import type { ActivitySummary, Project, Rule } from "@shared/types";
 import { formatTime } from "@renderer/lib/format";
 import { cn } from "@renderer/lib/utils";
 import { ActivityRow } from "./ActivityRow";
@@ -9,10 +9,11 @@ interface Props {
   project: Project | null;
   activities: ActivitySummary[];
   projects: Project[];
+  rules?: Rule[];
   defaultOpen?: boolean;
 }
 
-export function ProjectGroup({ project, activities, projects, defaultOpen = true }: Props) {
+export function ProjectGroup({ project, activities, projects, rules, defaultOpen = true }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const total = activities.reduce((sum, a) => sum + a.time, 0);
   const sorted = [...activities].sort((a, b) => b.time - a.time);
@@ -55,6 +56,7 @@ export function ProjectGroup({ project, activities, projects, defaultOpen = true
                   activity={a}
                   project={project}
                   projects={projects}
+                  rules={rules}
                 />
               ))}
             </div>

@@ -168,6 +168,7 @@ export function ReviewView({ state, initialDate }: Props) {
               project={null}
               entries={review!.unassigned}
               projects={state.projects}
+              rules={state.rules}
               totalSeconds={review!.unassigned.reduce((s, e) => s + e.seconds, 0)}
               onEditManual={openEdit}
             />
@@ -178,6 +179,7 @@ export function ReviewView({ state, initialDate }: Props) {
               project={g.project}
               entries={g.entries}
               projects={state.projects}
+              rules={state.rules}
               totalSeconds={g.totalSeconds}
               onEditManual={openEdit}
             />

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, ChevronDown, X } from "lucide-react";
-import type { ActivitySummary, Project } from "@shared/types";
+import type { ActivitySummary, Project, Rule } from "@shared/types";
 import {
   Popover,
   PopoverTrigger,
@@ -24,10 +24,11 @@ interface Props {
   activity: ActivitySummary;
   project: Project | null;
   projects: Project[];
+  rules?: Rule[];
   activityKey?: string;
 }
 
-export function AssignmentDropdown({ activity, project, projects, activityKey }: Props) {
+export function AssignmentDropdown({ activity, project, projects, rules, activityKey }: Props) {
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const key = activityKey ?? makeKey(activity.app, activity.title);
@@ -42,8 +43,15 @@ export function AssignmentDropdown({ activity, project, projects, activityKey }:
         s.length > n ? `${s.slice(0, n)}…` : s;
       const projectLabel = truncate(target?.name ?? "project", 32);
       const titleLabel = truncate(titleForRule, 28);
+
+      const patternLower = titleForRule.toLowerCase();
+      const ruleExists = (rules ?? []).some(
+        (r) => r.type === "keyword" && r.pattern.trim().toLowerCase() === patternLower,
+      );
+      const offerRule = Boolean(titleForRule) && !ruleExists;
+
       toast.success(`Assigned to "${projectLabel}"`, {
-        action: titleForRule
+        action: offerRule
           ? {
               label: `Always for "${titleLabel}"`,
               onClick: async () => {

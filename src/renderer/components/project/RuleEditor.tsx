@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { AppWindow, CalendarDays, Hash, Plus, X } from "lucide-react";
 import type { CalendarInfo, Project, Rule, RuleType } from "@shared/types";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
-import { Badge } from "@renderer/components/ui/badge";
+import { cn } from "@renderer/lib/utils";
 import { toast } from "sonner";
 
 interface Props {
@@ -65,36 +65,28 @@ export function RuleEditor({ project, rules }: Props) {
     }
   };
 
-  const ruleLabel = (rule: Rule): string => {
-    if (rule.type !== "calendar") return rule.pattern;
-    const cal = rule.calendarId ? calendars.find((c) => c.id === rule.calendarId) : null;
-    const parts: string[] = [];
-    if (cal) parts.push(`cal: ${cal.title}`);
-    else if (rule.calendarId) parts.push(`cal: ${rule.calendarId.slice(0, 6)}…`);
-    if (rule.pattern) parts.push(`match: ${rule.pattern}`);
-    return parts.join(" · ") || "any meeting";
+  const calendarRuleLabel = (
+    rule: Rule,
+  ): { calendar?: string; pattern?: string } => {
+    const cal = rule.calendarId
+      ? calendars.find((c) => c.id === rule.calendarId)
+      : undefined;
+    const calendar = cal
+      ? cal.title
+      : rule.calendarId
+        ? `${rule.calendarId.slice(0, 6)}…`
+        : undefined;
+    return { calendar, pattern: rule.pattern || undefined };
   };
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-2">
         {projectRules.length === 0 ? (
           <div className="text-xs text-muted-foreground">No rules yet. Add one below.</div>
         ) : (
           projectRules.map((rule) => (
-            <Badge key={rule.id} variant="outline" className="gap-1 pr-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                {rule.type}
-              </span>
-              <span className="font-mono">{ruleLabel(rule)}</span>
-              <button
-                onClick={() => remove(rule.id)}
-                className="ml-1 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                aria-label="Remove rule"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
+            <RuleChip key={rule.id} rule={rule} calendar={calendarRuleLabel(rule)} onRemove={() => remove(rule.id)} />
           ))
         )}
       </div>
@@ -142,4 +134,131 @@ export function RuleEditor({ project, rules }: Props) {
       </form>
     </div>
   );
+}
+
+interface RuleChipProps {
+  rule: Rule;
+  calendar: { calendar?: string; pattern?: string };
+  onRemove: () => void;
+}
+
+function RuleChip({ rule, calendar, onRemove }: RuleChipProps) {
+  const tone = chipToneFor(rule.type);
+  const TypeIcon = iconFor(rule.type);
+  const typeLabel = typeLabelFor(rule.type);
+
+  let valueElement: React.ReactNode;
+  if (rule.type === "calendar") {
+    const parts: React.ReactNode[] = [];
+    if (calendar.calendar) {
+      parts.push(
+        <span key="cal" className="max-w-[10rem] truncate">
+          {calendar.calendar}
+        </span>,
+      );
+    }
+    if (calendar.pattern) {
+      parts.push(
+        <span key="pat" className="max-w-[12rem] truncate font-mono">
+          {calendar.pattern}
+        </span>,
+      );
+    }
+    if (parts.length === 0) {
+      parts.push(
+        <span key="any" className="italic text-muted-foreground">
+          any event
+        </span>,
+      );
+    }
+    valueElement = (
+      <span className="flex items-center gap-1.5">
+        {parts.flatMap((node, i) =>
+          i === 0
+            ? [node]
+            : [
+                <span key={`sep-${i}`} className="text-muted-foreground/50">
+                  ·
+                </span>,
+                node,
+              ],
+        )}
+      </span>
+    );
+  } else {
+    valueElement = (
+      <span className="max-w-[14rem] truncate font-mono">{rule.pattern}</span>
+    );
+  }
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-stretch overflow-hidden rounded-md border text-xs",
+        tone.border,
+      )}
+    >
+      <span
+        className={cn(
+          "flex items-center gap-1.5 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider",
+          tone.leading,
+        )}
+      >
+        <TypeIcon className="h-3 w-3" aria-hidden />
+        {typeLabel}
+      </span>
+      <span className="flex items-center gap-2 px-2.5 py-1.5">
+        {valueElement}
+        <button
+          onClick={onRemove}
+          className="rounded-sm p-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+          aria-label="Remove rule"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </span>
+    </span>
+  );
+}
+
+function iconFor(type: RuleType): React.ComponentType<{ className?: string }> {
+  switch (type) {
+    case "app":
+      return AppWindow;
+    case "calendar":
+      return CalendarDays;
+    default:
+      return Hash;
+  }
+}
+
+function typeLabelFor(type: RuleType): string {
+  switch (type) {
+    case "app":
+      return "App";
+    case "calendar":
+      return "Calendar";
+    default:
+      return "Keyword";
+  }
+}
+
+function chipToneFor(type: RuleType): { leading: string; border: string } {
+  switch (type) {
+    case "app":
+      return {
+        leading: "bg-emerald-500/10 text-emerald-300",
+        border: "border-emerald-500/20",
+      };
+    case "calendar":
+      return {
+        leading: "bg-sky-500/10 text-sky-300",
+        border: "border-sky-500/20",
+      };
+    default:
+      return {
+        leading: "bg-muted/60 text-muted-foreground",
+        border: "border-border",
+      };
+  }
 }
