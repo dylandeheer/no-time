@@ -12,7 +12,6 @@ import {
   loadOverrides,
   saveOverrides,
   loadTracking,
-  saveTracking,
   loadSettings,
   saveSettings,
   loadManualEntries,
@@ -23,27 +22,34 @@ import {
   saveSuggestions,
   loadDismissedSuggestions,
   saveDismissedSuggestions,
+  loadSessionsByDay,
+  saveSessionsByDay,
+  migrateTrackingToSessionsIfNeeded,
   todayKey,
   getDateRangeBounds,
-  getTrackingForRange,
 } from "./storage.js";
 import { scheduleReviewNotification } from "./notifications.js";
 import {
   getAuthStatus as calendarAuthStatus,
   listCalendars as calendarListCalendars,
   listEvents as calendarListEvents,
-  mergeCalendarEvents,
 } from "./calendar.js";
+import {
+  applyCalendarOverlay,
+  dayKeyForMs,
+  derivedFlatMap,
+  derivedFlatMapForDay,
+  makeMatchFn,
+  sessionDurationSeconds,
+  upsertTick,
+} from "./sessions.js";
 import { LLMSupervisor, llmSidecarAvailable } from "./llm.js";
 import { SuggestionsEngine } from "./suggestions.js";
 import {
   CALENDAR_APP_NAME,
   MANUAL_APP_NAME,
   activityKey,
-  manualEntryKey,
   parseActivityKey,
-  parseCalendarEventKey,
-  parseManualEntryKey,
 } from "@shared/types";
 import type {
   Project,
@@ -74,6 +80,7 @@ import type {
   CalendarInfo,
   LlmState,
   Suggestion,
+  Session,
 } from "@shared/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -85,7 +92,7 @@ let tray: Tray | null = null;
 let projects: Project[] = [];
 let rules: Rule[] = [];
 let overrides: Record<string, ProjectId> = {};
-let trackingDays: Record<string, Record<string, number>> = {};
+let sessionsByDay: Record<string, Session[]> = {};
 let manualEntries: Record<ManualEntryId, ManualEntry> = {};
 let calendarEvents: Record<string, CalendarEvent> = {};
 let calendarPollIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -124,29 +131,74 @@ function shouldHideActivity(app: string, seconds: number): boolean {
   return seconds < settings.minActivitySeconds;
 }
 
+interface AggregatedEntry {
+  key: string;
+  app: string;
+  title: string;
+  seconds: number;
+  projectId: ProjectId | null;
+  assignedBy: Activity["assignedBy"];
+}
+
+function aggregateDay(date: string): {
+  entries: Map<string, AggregatedEntry>;
+  totalSeconds: number;
+} {
+  const sessions = sessionsByDay[date] ?? [];
+  const matchFor = makeMatchFn({ rules, overrides, manualEntries, calendarEvents });
+  const resolved = applyCalendarOverlay(sessions, date, calendarEvents, matchFor);
+
+  const entries = new Map<string, AggregatedEntry>();
+  let totalSeconds = 0;
+
+  for (const { session, match } of resolved) {
+    const seconds = sessionDurationSeconds(session);
+    totalSeconds += seconds;
+
+    let key: string;
+    if (session.source === "manual" && session.manualEntryId) {
+      key = `Manual entry::${session.manualEntryId}`;
+    } else if (session.source === "calendar" && session.calendarEventId) {
+      key = `Calendar::${session.calendarEventId}`;
+    } else if (session.source === "idle") {
+      key = "Idle::Idle";
+    } else {
+      key = `${session.app}::${session.title}`;
+    }
+
+    const existing = entries.get(key);
+    if (existing) {
+      existing.seconds += seconds;
+    } else {
+      entries.set(key, {
+        key,
+        app: session.app,
+        title: session.title,
+        seconds,
+        projectId: match.projectId,
+        assignedBy: match.assignedBy,
+      });
+    }
+  }
+
+  return { entries, totalSeconds };
+}
+
 function buildTrackingState(): TrackingState {
   const today = todayKey();
-  const todayData = trackingDays[today] ?? {};
+  const { entries, totalSeconds } = aggregateDay(today);
 
   const activities: Record<string, Activity> = {};
-  let totalTodaySeconds = 0;
 
-  for (const [key, time] of Object.entries(todayData)) {
-    const parsed = parseActivityKey(key);
-    if (!parsed) continue;
-
-    totalTodaySeconds += time;
-
-    if (shouldHideActivity(parsed.app, time)) continue;
-
-    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries, calendarEvents });
+  for (const [key, entry] of entries) {
+    if (shouldHideActivity(entry.app, entry.seconds)) continue;
     activities[key] = {
       key,
-      app: parsed.app,
-      title: displayTitleFor(parsed.app, parsed.title),
-      time,
-      projectId: match.projectId,
-      assignedBy: match.assignedBy,
+      app: entry.app,
+      title: displayTitleFor(entry.app, entry.title),
+      time: entry.seconds,
+      projectId: entry.projectId,
+      assignedBy: entry.assignedBy,
       lastSeen: 0,
     };
   }
@@ -156,7 +208,7 @@ function buildTrackingState(): TrackingState {
     projects,
     rules,
     currentActivity,
-    totalTodaySeconds,
+    totalTodaySeconds: totalSeconds,
     isPaused,
   };
 }
@@ -169,34 +221,47 @@ function broadcast(): void {
 
 function buildHistoricalState(range: DateRange): HistoricalState {
   const { start, end } = getDateRangeBounds(range);
-  const rangeDays = getTrackingForRange(trackingDays, start, end);
 
-  const aggregated = new Map<string, number>();
-  for (const dayEntries of Object.values(rangeDays)) {
-    for (const [key, time] of Object.entries(dayEntries)) {
-      aggregated.set(key, (aggregated.get(key) ?? 0) + time);
+  interface Accum {
+    app: string;
+    title: string;
+    totalSeconds: number;
+    projectId: ProjectId | null;
+    assignedBy: Activity["assignedBy"];
+  }
+  const aggregated = new Map<string, Accum>();
+  let totalSeconds = 0;
+
+  for (const day of Object.keys(sessionsByDay)) {
+    if (day < start || day > end) continue;
+    const dayAgg = aggregateDay(day);
+    totalSeconds += dayAgg.totalSeconds;
+    for (const [key, entry] of dayAgg.entries) {
+      const existing = aggregated.get(key);
+      if (existing) {
+        existing.totalSeconds += entry.seconds;
+      } else {
+        aggregated.set(key, {
+          app: entry.app,
+          title: entry.title,
+          totalSeconds: entry.seconds,
+          projectId: entry.projectId,
+          assignedBy: entry.assignedBy,
+        });
+      }
     }
   }
 
   const activities: Record<string, HistoricalActivity> = {};
-  let totalSeconds = 0;
-
-  for (const [key, totalTime] of aggregated) {
-    const parsed = parseActivityKey(key);
-    if (!parsed) continue;
-
-    totalSeconds += totalTime;
-
-    if (shouldHideActivity(parsed.app, totalTime)) continue;
-
-    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries, calendarEvents });
+  for (const [key, accum] of aggregated) {
+    if (shouldHideActivity(accum.app, accum.totalSeconds)) continue;
     activities[key] = {
       key,
-      app: parsed.app,
-      title: displayTitleFor(parsed.app, parsed.title),
-      totalTime,
-      projectId: match.projectId,
-      assignedBy: match.assignedBy,
+      app: accum.app,
+      title: displayTitleFor(accum.app, accum.title),
+      totalTime: accum.totalSeconds,
+      projectId: accum.projectId,
+      assignedBy: accum.assignedBy,
     };
   }
 
@@ -204,28 +269,24 @@ function buildHistoricalState(range: DateRange): HistoricalState {
 }
 
 function buildDayReviewState(date: string): DayReviewState {
-  const dayData = trackingDays[date] ?? {};
+  const { entries: aggEntries, totalSeconds } = aggregateDay(date);
 
   const entries: DayReviewEntry[] = [];
-  let totalSeconds = 0;
 
-  for (const [key, seconds] of Object.entries(dayData)) {
-    const parsed = parseActivityKey(key);
-    if (!parsed) continue;
+  for (const [key, entry] of aggEntries) {
+    if (shouldHideActivity(entry.app, entry.seconds)) continue;
 
-    if (shouldHideActivity(parsed.app, seconds)) {
-      totalSeconds += seconds;
-      continue;
-    }
-
-    const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries, calendarEvents });
-    const manualId = parseManualEntryKey(key);
+    const manualId = key.startsWith("Manual entry::")
+      ? key.slice("Manual entry::".length)
+      : undefined;
+    const calendarEventId = key.startsWith("Calendar::")
+      ? key.slice("Calendar::".length)
+      : undefined;
     const manualEntry = manualId ? manualEntries[manualId] : undefined;
-    const calendarEventId = parseCalendarEventKey(key);
     const calendarEvent = calendarEventId ? calendarEvents[calendarEventId] : undefined;
 
     let kind: DayReviewEntry["kind"] = "activity";
-    let title = parsed.title;
+    let title = entry.title;
     let description: string | undefined;
     if (manualEntry) {
       kind = "manual";
@@ -237,20 +298,20 @@ function buildDayReviewState(date: string): DayReviewState {
     }
 
     const suggestion =
-      match.projectId === null && match.assignedBy === "none"
+      entry.projectId === null && entry.assignedBy === "none"
         ? suggestionsByKey[key]
         : undefined;
 
     entries.push({
       key,
       kind,
-      app: parsed.app,
+      app: entry.app,
       title,
       description,
-      seconds,
-      projectId: match.projectId,
-      assignedBy: match.assignedBy,
-      manualEntryId: manualId ?? undefined,
+      seconds: entry.seconds,
+      projectId: entry.projectId,
+      assignedBy: entry.assignedBy,
+      manualEntryId: manualId,
       calendarEvent: calendarEvent
         ? {
             eventId: calendarEvent.id,
@@ -263,7 +324,6 @@ function buildDayReviewState(date: string): DayReviewState {
         : undefined,
       suggestion,
     });
-    totalSeconds += seconds;
   }
 
   const byProject = new Map<string | null, DayReviewEntry[]>();
@@ -324,17 +384,22 @@ async function runCalendarSync(): Promise<void> {
 
     const { start, end } = calendarFetchRange();
     const fetched = await calendarListEvents(start, end, settings.calendar.enabledCalendarIds);
-    const merged = mergeCalendarEvents(
-      trackingDays,
-      calendarEvents,
-      fetched,
-      start,
-      end,
-      settings.calendar,
-    );
-    trackingDays = merged.trackingDays;
-    calendarEvents = merged.events;
-    saveTracking(trackingDays);
+    const enabled = new Set(settings.calendar.enabledCalendarIds);
+    const kept: Record<string, CalendarEvent> = {};
+    for (const [id, cached] of Object.entries(calendarEvents)) {
+      const endKey = cached.end.slice(0, 10);
+      const startKey = cached.start.slice(0, 10);
+      const outsideRange = endKey < start || startKey > end;
+      const calendarAllowed =
+        enabled.size === 0 || enabled.has(cached.calendarId);
+      if (outsideRange && calendarAllowed) kept[id] = cached;
+    }
+    for (const event of fetched) {
+      if (enabled.size > 0 && !enabled.has(event.calendarId)) continue;
+      if (event.isAllDay && !settings.calendar.includeAllDay) continue;
+      kept[event.id] = event;
+    }
+    calendarEvents = kept;
     saveCalendarEvents(calendarEvents);
     cache.invalidate();
     broadcast();
@@ -388,7 +453,7 @@ function ensureSuggestionsEngine(): SuggestionsEngine {
     const llm = ensureLlmSupervisor();
     suggestionsEngine = new SuggestionsEngine({
       llm,
-      getTrackingDays: () => trackingDays,
+      getTrackingDays: () => derivedFlatMap(sessionsByDay),
       getSettings: () => settings.suggestions,
       getProjects: () => projects,
       getOverrides: () => overrides,
@@ -452,26 +517,62 @@ function scheduleSuggestionSweep(): void {
 }
 
 function clearAllCalendarEntries(): void {
-  for (const day of Object.keys(trackingDays)) {
-    const entries = trackingDays[day];
-    for (const key of Object.keys(entries)) {
-      if (parseCalendarEventKey(key) !== null) {
-        delete entries[key];
-      }
-    }
-    if (Object.keys(entries).length === 0) delete trackingDays[day];
-  }
   calendarEvents = {};
-  saveTracking(trackingDays);
   saveCalendarEvents(calendarEvents);
   cache.invalidate();
+}
+
+function upsertManualSession(entry: ManualEntry): void {
+  const sessions = sessionsByDay[entry.date] ? [...sessionsByDay[entry.date]] : [];
+  const idx = sessions.findIndex((s) => s.manualEntryId === entry.id);
+  const start = idx >= 0 ? sessions[idx].start : Date.now();
+  const end = start + entry.seconds * 1000;
+  const session: Session = {
+    id: idx >= 0 ? sessions[idx].id : nanoid(12),
+    start,
+    end,
+    app: "Manual entry",
+    title: entry.description,
+    source: "manual",
+    manualEntryId: entry.id,
+  };
+  if (idx >= 0) sessions[idx] = session;
+  else sessions.push(session);
+  sessionsByDay[entry.date] = sessions;
+}
+
+function removeManualSession(id: ManualEntryId, date: string): void {
+  const sessions = sessionsByDay[date];
+  if (!sessions) return;
+  const next = sessions.filter((s) => s.manualEntryId !== id);
+  if (next.length === 0) delete sessionsByDay[date];
+  else sessionsByDay[date] = next;
+}
+
+function recordTick(args: {
+  app: string;
+  title: string;
+  source: "app" | "idle";
+  now: number;
+  minDurationMs: number;
+}): void {
+  const day = dayKeyForMs(args.now);
+  const existing = sessionsByDay[day] ?? [];
+  sessionsByDay[day] = upsertTick(existing, {
+    app: args.app,
+    title: args.title,
+    source: args.source,
+    now: args.now,
+    minDurationMs: args.minDurationMs,
+  });
+  trackingDirty = true;
 }
 
 async function trackLoop(): Promise<void> {
   const activeWinModule = await import("active-win");
   const activeWindow = activeWinModule.default;
 
-  const intervalSeconds = Math.round(settings.trackingIntervalMs / 1000);
+  const intervalMs = settings.trackingIntervalMs;
 
   trackingIntervalId = setInterval(async () => {
     try {
@@ -489,35 +590,28 @@ async function trackLoop(): Promise<void> {
       const app = win.owner.name;
       const title = win.title;
       const key = activityKey(app, title);
+      const now = Date.now();
 
-      // Idle detection
       if (key !== lastActivityKey) {
         lastActivityKey = key;
-        lastActivityChangeTime = Date.now();
+        lastActivityChangeTime = now;
         isIdle = false;
       }
 
       if (settings.idle.enabled && !isIdle) {
-        const elapsed = Date.now() - lastActivityChangeTime;
+        const elapsed = now - lastActivityChangeTime;
         if (elapsed > settings.idle.timeoutMinutes * 60 * 1000) {
           isIdle = true;
         }
       }
 
       if (isIdle) {
-        const idleKey = activityKey("Idle", "Idle");
-        const today = todayKey();
-        if (!trackingDays[today]) trackingDays[today] = {};
-        trackingDays[today][idleKey] = (trackingDays[today][idleKey] ?? 0) + intervalSeconds;
-        trackingDirty = true;
+        recordTick({ app: "Idle", title: "Idle", source: "idle", now, minDurationMs: intervalMs });
         broadcast();
         return;
       }
 
-      const today = todayKey();
-      if (!trackingDays[today]) trackingDays[today] = {};
-      trackingDays[today][key] = (trackingDays[today][key] ?? 0) + intervalSeconds;
-      trackingDirty = true;
+      recordTick({ app, title, source: "app", now, minDurationMs: intervalMs });
 
       const match = cache.get(app, title, { rules, overrides, manualEntries, calendarEvents });
       currentActivity = { app, title, projectId: match.projectId };
@@ -530,7 +624,7 @@ async function trackLoop(): Promise<void> {
 
   setInterval(() => {
     if (trackingDirty) {
-      saveTracking(trackingDays);
+      saveSessionsByDay(sessionsByDay);
       trackingDirty = false;
     }
   }, 30000);
@@ -842,7 +936,11 @@ function registerIpc(): void {
       if (result.canceled || !result.filePath) return { success: false };
 
       const { start, end } = getDateRangeBounds(range);
-      const rangeDays = getTrackingForRange(trackingDays, start, end);
+      const rangeDays: Record<string, Record<string, number>> = {};
+      for (const day of Object.keys(sessionsByDay)) {
+        if (day < start || day > end) continue;
+        rangeDays[day] = derivedFlatMapForDay(sessionsByDay[day]);
+      }
 
       const projectMap = new Map(projects.map((p) => [p.id, p]));
 
@@ -1093,20 +1191,20 @@ function registerIpc(): void {
     "add-manual-entry",
     (_e, input: CreateManualEntryInput): ManualEntry => {
       const id = nanoid(10);
+      const seconds = Math.max(0, Math.round(input.seconds));
       const entry: ManualEntry = {
         id,
         date: input.date,
         description: input.description.trim(),
-        seconds: Math.max(0, Math.round(input.seconds)),
+        seconds,
         projectId: input.projectId,
         createdAt: Date.now(),
       };
       manualEntries = { ...manualEntries, [id]: entry };
       saveManualEntries(manualEntries);
 
-      if (!trackingDays[input.date]) trackingDays[input.date] = {};
-      trackingDays[input.date][manualEntryKey(id)] = entry.seconds;
-      saveTracking(trackingDays);
+      upsertManualSession(entry);
+      saveSessionsByDay(sessionsByDay);
 
       cache.invalidate();
       broadcast();
@@ -1133,9 +1231,8 @@ function registerIpc(): void {
       manualEntries = { ...manualEntries, [input.id]: updated };
       saveManualEntries(manualEntries);
 
-      if (!trackingDays[existing.date]) trackingDays[existing.date] = {};
-      trackingDays[existing.date][manualEntryKey(input.id)] = updated.seconds;
-      saveTracking(trackingDays);
+      upsertManualSession(updated);
+      saveSessionsByDay(sessionsByDay);
 
       cache.invalidate();
       broadcast();
@@ -1151,13 +1248,8 @@ function registerIpc(): void {
     manualEntries = rest;
     saveManualEntries(manualEntries);
 
-    const dayData = trackingDays[existing.date];
-    if (dayData) {
-      const key = manualEntryKey(id);
-      const { [key]: _removedSeconds, ...restDay } = dayData;
-      trackingDays[existing.date] = restDay;
-      saveTracking(trackingDays);
-    }
+    removeManualSession(id, existing.date);
+    saveSessionsByDay(sessionsByDay);
 
     cache.invalidate();
     broadcast();
@@ -1165,15 +1257,15 @@ function registerIpc(): void {
 
   ipcMain.handle("clear-today-data", (): void => {
     const today = todayKey();
-    delete trackingDays[today];
-    saveTracking(trackingDays);
+    delete sessionsByDay[today];
+    saveSessionsByDay(sessionsByDay);
     cache.invalidate();
     broadcast();
   });
 
   ipcMain.handle("clear-all-data", (): void => {
-    trackingDays = {};
-    saveTracking(trackingDays);
+    sessionsByDay = {};
+    saveSessionsByDay(sessionsByDay);
     cache.invalidate();
     broadcast();
   });
@@ -1191,12 +1283,21 @@ app.whenReady().then(async () => {
   projects = loadProjects();
   rules = loadRules();
   overrides = loadOverrides();
-  trackingDays = loadTracking();
   manualEntries = loadManualEntries();
   calendarEvents = loadCalendarEvents();
   suggestionsByKey = loadSuggestions();
   dismissedSuggestions = loadDismissedSuggestions();
   settings = loadSettings();
+
+  const legacyTracking = loadTracking();
+  sessionsByDay = migrateTrackingToSessionsIfNeeded(
+    legacyTracking,
+    manualEntries,
+    calendarEvents,
+  );
+  if (Object.keys(sessionsByDay).length === 0) {
+    sessionsByDay = loadSessionsByDay();
+  }
 
   scheduleReviewNotification(settings.reviewNotification, focusReviewToday);
   startCalendarPolling();
@@ -1258,7 +1359,7 @@ app.on("before-quit", () => {
   globalShortcut.unregisterAll();
   stopCalendarPolling();
   stopSuggestions();
-  if (trackingDirty) saveTracking(trackingDays);
+  if (trackingDirty) saveSessionsByDay(sessionsByDay);
 });
 
 app.on("window-all-closed", () => {

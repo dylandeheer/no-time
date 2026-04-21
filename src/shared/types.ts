@@ -24,8 +24,26 @@ export type AssignedBy =
   | "manual"
   | "manual-entry"
   | "calendar-rule"
+  | "calendar-overlay"
   | "suggestion-accepted"
   | "none";
+
+export type SessionSource = "app" | "calendar" | "manual" | "idle";
+
+export type SessionId = string;
+
+export interface Session {
+  id: SessionId;
+  start: number;
+  end: number;
+  app: string;
+  title: string;
+  source: SessionSource;
+  calendarEventId?: string;
+  manualEntryId?: string;
+  mergedFrom?: SessionId[];
+  splitFrom?: SessionId;
+}
 
 export type ManualEntryId = string;
 

@@ -1,4 +1,5 @@
 import Store from "electron-store";
+import { nanoid } from "nanoid";
 import type {
   Project,
   ProjectId,
@@ -8,6 +9,12 @@ import type {
   ManualEntryId,
   CalendarEvent,
   Suggestion,
+  Session,
+} from "@shared/types";
+import {
+  CALENDAR_APP_NAME,
+  MANUAL_APP_NAME,
+  parseActivityKey,
 } from "@shared/types";
 
 interface ProjectsStoreSchema {
@@ -31,6 +38,11 @@ interface CalendarCacheStoreSchema {
 interface SuggestionsStoreSchema {
   byActivity: Record<string, Suggestion>;
   dismissed: Record<string, number>;
+}
+
+interface SessionsStoreSchema {
+  byDay: Record<string, Session[]>;
+  migratedFromTracking: boolean;
 }
 
 const projectsStore = new Store<ProjectsStoreSchema>({
@@ -84,6 +96,11 @@ const calendarCacheStore = new Store<CalendarCacheStoreSchema>({
 const suggestionsStore = new Store<SuggestionsStoreSchema>({
   name: "suggestions",
   defaults: { byActivity: {}, dismissed: {} },
+});
+
+const sessionsStore = new Store<SessionsStoreSchema>({
+  name: "sessions",
+  defaults: { byDay: {}, migratedFromTracking: false },
 });
 
 export function loadSettings(): AppSettings {
@@ -183,6 +200,81 @@ export function loadDismissedSuggestions(): Record<string, number> {
 
 export function saveDismissedSuggestions(dismissed: Record<string, number>): void {
   suggestionsStore.set("dismissed", dismissed);
+}
+
+export function loadSessionsByDay(): Record<string, Session[]> {
+  return sessionsStore.get("byDay");
+}
+
+export function saveSessionsByDay(byDay: Record<string, Session[]>): void {
+  sessionsStore.set("byDay", byDay);
+}
+
+function dayMidnight(dateKey: string): number {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+}
+
+export function migrateTrackingToSessionsIfNeeded(
+  trackingDays: Record<string, Record<string, number>>,
+  manualEntries: Record<ManualEntryId, ManualEntry>,
+  calendarEvents: Record<string, CalendarEvent>,
+): Record<string, Session[]> {
+  if (sessionsStore.get("migratedFromTracking")) {
+    return loadSessionsByDay();
+  }
+
+  const byDay: Record<string, Session[]> = {};
+  for (const [dateKey, entries] of Object.entries(trackingDays)) {
+    const sessions: Session[] = [];
+    let cursor = dayMidnight(dateKey);
+    for (const [key, seconds] of Object.entries(entries)) {
+      if (seconds <= 0) continue;
+      const parsed = parseActivityKey(key);
+      if (!parsed) continue;
+
+      let source: Session["source"] = "app";
+      let app = parsed.app;
+      let title = parsed.title;
+      let manualEntryId: string | undefined;
+      let calendarEventId: string | undefined;
+
+      if (parsed.app === MANUAL_APP_NAME) {
+        source = "manual";
+        manualEntryId = parsed.title;
+        const entry = manualEntries[parsed.title];
+        if (entry) title = entry.description;
+      } else if (parsed.app === CALENDAR_APP_NAME) {
+        source = "calendar";
+        calendarEventId = parsed.title;
+        const event = calendarEvents[parsed.title];
+        if (event) {
+          title = event.title;
+          app = event.calendarTitle;
+        }
+      } else if (parsed.app === "Idle") {
+        source = "idle";
+      }
+
+      const end = cursor + seconds * 1000;
+      sessions.push({
+        id: nanoid(12),
+        start: cursor,
+        end,
+        app,
+        title,
+        source,
+        manualEntryId,
+        calendarEventId,
+      });
+      cursor = end;
+    }
+    if (sessions.length > 0) byDay[dateKey] = sessions;
+  }
+
+  sessionsStore.set("byDay", byDay);
+  sessionsStore.set("migratedFromTracking", true);
+  return byDay;
 }
 
 export function todayKey(): string {
