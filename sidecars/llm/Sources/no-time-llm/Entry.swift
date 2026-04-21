@@ -53,7 +53,9 @@ struct StatusPayload: Encodable {
     let modelId: String?
 }
 
-let defaultModelId = "Qwen/Qwen3-0.6B-MLX-4bit"
+enum Defaults {
+    static let modelId = "Qwen/Qwen3-0.6B-MLX-4bit"
+}
 
 actor LLMService {
     private var container: ModelContainer?
@@ -169,12 +171,14 @@ func parseModelOutput(_ raw: String, projects: [ProjectInput]) -> CategorizeResu
     return CategorizeResult(projectId: id, confidence: max(0, min(1, confidence)), reason: reason)
 }
 
-let outputQueue = DispatchQueue(label: "no-time-llm.stdout")
+enum Output {
+    static let queue = DispatchQueue(label: "no-time-llm.stdout")
+}
 
 func emit<T: Encodable>(_ response: Response<T>) {
     let encoder = JSONEncoder()
     guard let data = try? encoder.encode(response) else { return }
-    outputQueue.sync {
+    Output.queue.sync {
         FileHandle.standardOutput.write(data)
         FileHandle.standardOutput.write(Data("\n".utf8))
     }
@@ -222,7 +226,7 @@ struct Main {
             return
         }
 
-        let modelId = request.modelId ?? defaultModelId
+        let modelId = request.modelId ?? Defaults.modelId
 
         switch request.op {
         case "status":

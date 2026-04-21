@@ -15,6 +15,7 @@ extraResources:
     filter:
       - "no-time-calendar"
       - "no-time-llm"
+      - "mlx-swift_Cmlx.bundle/**"
 
 mac:
   category: public.app-category.productivity

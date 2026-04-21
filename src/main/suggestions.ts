@@ -176,6 +176,7 @@ export class SuggestionsEngine {
       if (!parsed) continue;
       if (parsed.app === MANUAL_APP_NAME) continue;
       if (parsed.app === CALENDAR_APP_NAME) continue;
+      if (parsed.app === "Idle") continue;
       if (this.deps.getAssignedBy(key) !== "none") continue;
       candidates.push({
         key,

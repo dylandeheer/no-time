@@ -10,4 +10,5 @@ release
 *.log
 assets/bin/
 sidecars/llm/.build/
+sidecars/llm/build/
 sidecars/llm/Package.resolved
