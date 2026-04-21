@@ -14,14 +14,14 @@ export function UncategorizedBanner({ count, onReview }: Props) {
       <AlertCircle className="h-4 w-4 shrink-0 text-primary" />
       <div className="flex-1">
         <span className="font-medium text-foreground">
-          {count} {count === 1 ? "activity" : "activities"} uncategorized
+          {count} {count === 1 ? "activity" : "activities"} to review today
         </span>
         <span className="ml-2 text-muted-foreground">
-          Assign them to projects to track time properly.
+          Confirm or reassign in the Review tab.
         </span>
       </div>
       <Button size="sm" variant="secondary" onClick={onReview}>
-        Review
+        Review today
       </Button>
     </div>
   );

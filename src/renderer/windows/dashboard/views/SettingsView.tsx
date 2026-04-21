@@ -93,25 +93,48 @@ export function SettingsView() {
         <Card className="p-5">
           <h2 className="mb-1 text-sm font-semibold">Tracking</h2>
           <p className="mb-4 text-xs text-muted-foreground">
-            How often the app polls for the active window.
+            How often the app polls for the active window, and the minimum activity
+            duration shown in lists.
           </p>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">Polling interval</span>
-            <Select
-              value={String(settings.trackingIntervalMs)}
-              onValueChange={(v) => updateSettings({ trackingIntervalMs: Number(v) })}
-            >
-              <SelectTrigger className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {INTERVAL_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">Polling interval</span>
+              <Select
+                value={String(settings.trackingIntervalMs)}
+                onValueChange={(v) => updateSettings({ trackingIntervalMs: Number(v) })}
+              >
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {INTERVAL_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">Hide activities under</span>
+              <Input
+                type="number"
+                min={0}
+                max={3600}
+                step={60}
+                value={Math.round(settings.minActivitySeconds / 60)}
+                onChange={(e) => {
+                  const minutes = Math.max(0, Math.min(60, Number(e.target.value) || 0));
+                  updateSettings({ minActivitySeconds: minutes * 60 });
+                }}
+                className="w-24"
+              />
+              <span className="text-sm text-muted-foreground">minutes</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Short bursts are still counted in totals but hidden from the Activities and
+              Review lists. Manual entries and meetings always show.
+            </p>
           </div>
         </Card>
 

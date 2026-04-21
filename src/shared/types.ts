@@ -3,17 +3,11 @@ export type RuleId = string;
 
 export type RuleType = "keyword" | "app" | "calendar";
 
-export type ClientId = string;
-export type InvoiceId = string;
-
 export interface Project {
   id: ProjectId;
   name: string;
   color: string;
   createdAt: number;
-  clientId?: ClientId;
-  hourlyRateCents?: number;
-  billable: boolean;
 }
 
 export interface Rule {
@@ -90,16 +84,6 @@ export interface CreateProjectInput {
   name: string;
   color: string;
   autoRulePattern?: string | null;
-  clientId?: ClientId;
-  hourlyRateCents?: number;
-  billable?: boolean;
-}
-
-export interface UpdateProjectBillingInput {
-  id: ProjectId;
-  clientId?: ClientId | null;
-  hourlyRateCents?: number | null;
-  billable?: boolean;
 }
 
 export interface CreateRuleInput {
@@ -172,6 +156,7 @@ export interface AppSettings {
   reviewedDays: Record<string, number>;
   calendar: CalendarSettings;
   suggestions: SuggestionsSettings;
+  minActivitySeconds: number;
 }
 
 export interface DayReviewEntry {
@@ -300,117 +285,3 @@ export interface Suggestion {
   modelId: string;
 }
 
-export interface Client {
-  id: ClientId;
-  name: string;
-  email?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  postalCode?: string;
-  country?: string;
-  vatNumber?: string;
-  currency: string;
-  defaultHourlyRateCents?: number;
-  createdAt: number;
-}
-
-export interface CreateClientInput {
-  name: string;
-  email?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  postalCode?: string;
-  country?: string;
-  vatNumber?: string;
-  currency?: string;
-  defaultHourlyRateCents?: number;
-}
-
-export interface UpdateClientInput {
-  id: ClientId;
-  name?: string;
-  email?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  postalCode?: string;
-  country?: string;
-  vatNumber?: string;
-  currency?: string;
-  defaultHourlyRateCents?: number | null;
-}
-
-export type InvoiceGrouping = "project" | "project-day";
-export type InvoiceRoundingMode = "none" | "15min" | "30min" | "60min";
-
-export interface CompanyDetails {
-  name: string;
-  email?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  postalCode?: string;
-  country?: string;
-  vatNumber?: string;
-  iban?: string;
-}
-
-export interface InvoiceSettings {
-  defaultVatPercent: number;
-  defaultGrouping: InvoiceGrouping;
-  defaultRounding: InvoiceRoundingMode;
-  numberPrefix: string;
-  nextNumber: number;
-  company: CompanyDetails;
-}
-
-export interface InvoiceLine {
-  description: string;
-  seconds: number;
-  billableSeconds: number;
-  hours: number;
-  rateCents: number;
-  amountCents: number;
-}
-
-export interface Invoice {
-  id: InvoiceId;
-  number: string;
-  clientId: ClientId;
-  clientName: string;
-  startDate: string;
-  endDate: string;
-  issueDate: string;
-  dueDate: string;
-  currency: string;
-  grouping: InvoiceGrouping;
-  rounding: InvoiceRoundingMode;
-  vatPercent: number;
-  notes?: string;
-  lines: InvoiceLine[];
-  subtotalCents: number;
-  vatCents: number;
-  totalCents: number;
-  company: CompanyDetails;
-  createdAt: number;
-}
-
-export interface GenerateInvoiceInput {
-  clientId: ClientId;
-  startDate: string;
-  endDate: string;
-  grouping?: InvoiceGrouping;
-  rounding?: InvoiceRoundingMode;
-  vatPercent?: number;
-  notes?: string;
-  issueDate?: string;
-  dueDate?: string;
-  invoiceNumber?: string;
-}
-
-export interface InvoicePreview {
-  invoice: Invoice;
-  warnings: string[];
-}

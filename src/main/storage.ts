@@ -8,11 +8,6 @@ import type {
   ManualEntryId,
   CalendarEvent,
   Suggestion,
-  Client,
-  ClientId,
-  Invoice,
-  InvoiceId,
-  InvoiceSettings,
 } from "@shared/types";
 
 interface ProjectsStoreSchema {
@@ -36,15 +31,6 @@ interface CalendarCacheStoreSchema {
 interface SuggestionsStoreSchema {
   byActivity: Record<string, Suggestion>;
   dismissed: Record<string, number>;
-}
-
-interface ClientsStoreSchema {
-  clients: Record<ClientId, Client>;
-}
-
-interface InvoicesStoreSchema {
-  invoices: Record<InvoiceId, Invoice>;
-  settings: InvoiceSettings;
 }
 
 const projectsStore = new Store<ProjectsStoreSchema>({
@@ -77,6 +63,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     minSecondsThreshold: 300,
     modelId: "Qwen/Qwen3-0.6B-MLX-4bit",
   },
+  minActivitySeconds: 300,
 };
 
 const settingsStore = new Store<AppSettings>({
@@ -99,25 +86,6 @@ const suggestionsStore = new Store<SuggestionsStoreSchema>({
   defaults: { byActivity: {}, dismissed: {} },
 });
 
-const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
-  defaultVatPercent: 21,
-  defaultGrouping: "project",
-  defaultRounding: "15min",
-  numberPrefix: "INV-",
-  nextNumber: 1,
-  company: { name: "" },
-};
-
-const clientsStore = new Store<ClientsStoreSchema>({
-  name: "clients",
-  defaults: { clients: {} },
-});
-
-const invoicesStore = new Store<InvoicesStoreSchema>({
-  name: "invoices",
-  defaults: { invoices: {}, settings: DEFAULT_INVOICE_SETTINGS },
-});
-
 export function loadSettings(): AppSettings {
   const stored = settingsStore.store;
   return {
@@ -135,6 +103,10 @@ export function loadSettings(): AppSettings {
       ...(stored.suggestions ?? {}),
       modelId: migrateModelId(stored.suggestions?.modelId),
     },
+    minActivitySeconds:
+      typeof stored.minActivitySeconds === "number"
+        ? stored.minActivitySeconds
+        : DEFAULT_SETTINGS.minActivitySeconds,
   };
 }
 
@@ -150,17 +122,7 @@ export function saveSettings(settings: AppSettings): void {
 }
 
 export function loadProjects(): Project[] {
-  const stored = projectsStore.get("projects");
-  let migrated = false;
-  const projects = stored.map((p) => {
-    if (typeof p.billable === "boolean") return p;
-    migrated = true;
-    return { ...p, billable: true };
-  });
-  if (migrated) {
-    projectsStore.set("projects", projects);
-  }
-  return projects;
+  return projectsStore.get("projects");
 }
 
 export function saveProjects(projects: Project[]): void {
@@ -221,38 +183,6 @@ export function loadDismissedSuggestions(): Record<string, number> {
 
 export function saveDismissedSuggestions(dismissed: Record<string, number>): void {
   suggestionsStore.set("dismissed", dismissed);
-}
-
-export function loadClients(): Record<ClientId, Client> {
-  return clientsStore.get("clients");
-}
-
-export function saveClients(clients: Record<ClientId, Client>): void {
-  clientsStore.set("clients", clients);
-}
-
-export function loadInvoices(): Record<InvoiceId, Invoice> {
-  return invoicesStore.get("invoices");
-}
-
-export function saveInvoices(invoices: Record<InvoiceId, Invoice>): void {
-  invoicesStore.set("invoices", invoices);
-}
-
-export function loadInvoiceSettings(): InvoiceSettings {
-  const stored = invoicesStore.get("settings");
-  return {
-    ...DEFAULT_INVOICE_SETTINGS,
-    ...stored,
-    company: {
-      ...DEFAULT_INVOICE_SETTINGS.company,
-      ...(stored?.company ?? {}),
-    },
-  };
-}
-
-export function saveInvoiceSettings(settings: InvoiceSettings): void {
-  invoicesStore.set("settings", settings);
 }
 
 export function todayKey(): string {

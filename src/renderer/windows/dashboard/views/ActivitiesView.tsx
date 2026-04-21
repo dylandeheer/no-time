@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ActivitySummary, Project, TrackingState, DateRange, HistoricalState } from "@shared/types";
 import { ProjectGroup } from "@renderer/components/activity/ProjectGroup";
 import { UncategorizedBanner } from "@renderer/components/activity/UncategorizedBanner";
@@ -6,10 +6,10 @@ import { DateRangeSelector } from "@renderer/components/DateRangeSelector";
 
 interface Props {
   state: TrackingState;
+  onNavigateReview?: () => void;
 }
 
-export function ActivitiesView({ state }: Props) {
-  const uncategorizedRef = useRef<HTMLDivElement>(null);
+export function ActivitiesView({ state, onNavigateReview }: Props) {
   const [dateRange, setDateRange] = useState<DateRange>("today");
   const [historicalState, setHistoricalState] = useState<HistoricalState | null>(null);
 
@@ -73,9 +73,11 @@ export function ActivitiesView({ state }: Props) {
     return { groups, unassigned: unassignedList };
   }, [normalized, state.projects]);
 
-  const scrollToUncategorized = () => {
-    uncategorizedRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  const todayUnassignedCount = useMemo(
+    () =>
+      Object.values(state.activities).filter((a) => a.projectId === null).length,
+    [state.activities],
+  );
 
   const hasContent = groups.length > 0 || unassigned.length > 0;
 
@@ -96,7 +98,10 @@ export function ActivitiesView({ state }: Props) {
         <DateRangeSelector value={dateRange} onChange={setDateRange} />
       </header>
 
-      <UncategorizedBanner count={unassigned.length} onReview={scrollToUncategorized} />
+      <UncategorizedBanner
+        count={todayUnassignedCount}
+        onReview={() => onNavigateReview?.()}
+      />
 
       {!hasContent ? (
         <div className="rounded-lg border border-dashed border-border p-12 text-center">
@@ -119,9 +124,7 @@ export function ActivitiesView({ state }: Props) {
           ))}
 
           {unassigned.length > 0 && (
-            <div ref={uncategorizedRef}>
-              <ProjectGroup project={null} activities={unassigned } projects={state.projects} />
-            </div>
+            <ProjectGroup project={null} activities={unassigned} projects={state.projects} />
           )}
         </div>
       )}

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   ClipboardCheck,
-  FileText,
   FolderKanban,
   Pause,
   Play,
@@ -18,10 +17,10 @@ import { ActivitiesView } from "./views/ActivitiesView";
 import { ProjectsView } from "./views/ProjectsView";
 import { ProjectDetailView } from "./views/ProjectDetailView";
 import { ReviewView } from "./views/ReviewView";
-import { InvoicesView } from "./views/InvoicesView";
 import { SettingsView } from "./views/SettingsView";
+import { LLMStatusIndicator } from "@renderer/components/LLMStatusIndicator";
 
-type View = "activities" | "projects" | "review" | "invoices" | "settings";
+type View = "activities" | "projects" | "review" | "settings";
 
 export function App() {
   const state = useTrackingState();
@@ -51,8 +50,7 @@ export function App() {
       if (e.key === "1") { e.preventDefault(); setView("projects"); setDetailProjectId(null); }
       if (e.key === "2") { e.preventDefault(); setView("activities"); setDetailProjectId(null); }
       if (e.key === "3") { e.preventDefault(); setView("review"); setDetailProjectId(null); }
-      if (e.key === "4") { e.preventDefault(); setView("invoices"); setDetailProjectId(null); }
-      if (e.key === "5") { e.preventDefault(); setView("settings"); setDetailProjectId(null); }
+      if (e.key === ",") { e.preventDefault(); setView("settings"); setDetailProjectId(null); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -104,15 +102,10 @@ export function App() {
                 setDetailProjectId(null);
               }}
             />
-            <NavButton
-              icon={<FileText className="h-4 w-4" />}
-              label="Invoices"
-              active={view === "invoices"}
-              onClick={() => {
-                setView("invoices");
-                setDetailProjectId(null);
-              }}
-            />
+          </nav>
+
+          <div className="space-y-1 border-t border-border p-3">
+            <LLMStatusIndicator />
             <NavButton
               icon={<SettingsIcon className="h-4 w-4" />}
               label="Settings"
@@ -121,8 +114,9 @@ export function App() {
                 setView("settings");
                 setDetailProjectId(null);
               }}
+              muted
             />
-          </nav>
+          </div>
 
           <div className="border-t border-border p-4">
             <div className="mb-1 flex items-center justify-between">
@@ -188,9 +182,10 @@ export function App() {
                 onBack={backToProjects}
               />
             )}
-            {view === "activities" && <ActivitiesView state={state} />}
+            {view === "activities" && (
+              <ActivitiesView state={state} onNavigateReview={() => setView("review")} />
+            )}
             {view === "review" && <ReviewView state={state} initialDate={reviewDate} />}
-            {view === "invoices" && <InvoicesView />}
             {view === "settings" && <SettingsView />}
           </div>
         </main>
@@ -206,20 +201,25 @@ function NavButton({
   label,
   active,
   onClick,
+  muted = false,
 }: {
   icon: React.ReactNode;
   label: string;
   active: boolean;
   onClick: () => void;
+  muted?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+        "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 font-medium transition-colors",
+        muted ? "text-xs" : "text-sm",
         active
           ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+          : muted
+            ? "text-muted-foreground/80 hover:bg-accent/40 hover:text-foreground"
+            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
       )}
     >
       {icon}
