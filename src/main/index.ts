@@ -81,6 +81,10 @@ import type {
   LlmState,
   Suggestion,
   Session,
+  TimelineSegment,
+  BulkAssignInput,
+  SplitSessionInput,
+  MergeSessionsInput,
 } from "@shared/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -354,7 +358,62 @@ function buildDayReviewState(date: string): DayReviewState {
     reviewedAt: settings.reviewedDays[date] ?? null,
     groups,
     unassigned,
+    timeline: buildTimeline(date),
+    dayStartMs: dayBoundsForKey(date).start,
+    dayEndMs: dayBoundsForKey(date).end,
   };
+}
+
+function dayBoundsForKey(dateKey: string): { start: number; end: number } {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return {
+    start: new Date(y, m - 1, d, 0, 0, 0, 0).getTime(),
+    end: new Date(y, m - 1, d, 23, 59, 59, 999).getTime(),
+  };
+}
+
+function buildTimeline(date: string): TimelineSegment[] {
+  const sessions = sessionsByDay[date] ?? [];
+  if (sessions.length === 0) return [];
+  const matchFor = makeMatchFn({ rules, overrides, manualEntries, calendarEvents });
+  const resolved = applyCalendarOverlay(sessions, date, calendarEvents, matchFor);
+  const projectMap = new Map(projects.map((p) => [p.id, p]));
+
+  return resolved.map(({ session, match }) => {
+    const project = match.projectId ? projectMap.get(match.projectId) : undefined;
+    const calendarEvent = session.calendarEventId
+      ? calendarEvents[session.calendarEventId]
+      : undefined;
+
+    let activityKey: string;
+    if (session.source === "manual" && session.manualEntryId) {
+      activityKey = `Manual entry::${session.manualEntryId}`;
+    } else if (session.source === "calendar" && session.calendarEventId) {
+      activityKey = `Calendar::${session.calendarEventId}`;
+    } else if (session.source === "idle") {
+      activityKey = "Idle::Idle";
+    } else {
+      activityKey = `${session.app}::${session.title}`;
+    }
+
+    return {
+      id: session.id,
+      start: session.start,
+      end: session.end,
+      app: session.app,
+      title: displayTitleFor(session.app, session.title),
+      source: session.source,
+      projectId: match.projectId,
+      projectColor: project?.color,
+      projectName: project?.name,
+      assignedBy: match.assignedBy,
+      calendarEventId: session.calendarEventId,
+      calendarTitle: calendarEvent?.title,
+      manualEntryId: session.manualEntryId,
+      mergedFrom: session.mergedFrom,
+      activityKey,
+    };
+  });
 }
 
 const CALENDAR_LOOKBACK_DAYS = 7;
@@ -825,6 +884,99 @@ function registerIpc(): void {
     cache.invalidate();
     broadcast();
   });
+
+  ipcMain.handle("bulk-assign", (_e, input: BulkAssignInput): number => {
+    if (!input.projectId) return 0;
+    let changed = 0;
+    const next = { ...overrides };
+    for (const key of input.activityKeys) {
+      if (next[key] !== input.projectId) {
+        next[key] = input.projectId;
+        suggestionsEngine?.clearSuggestionForKey(key);
+        changed += 1;
+      }
+    }
+    if (changed > 0) {
+      overrides = next;
+      saveOverrides(overrides);
+      cache.invalidate();
+      broadcast();
+    }
+    return changed;
+  });
+
+  ipcMain.handle(
+    "split-session",
+    (_e, input: SplitSessionInput): { success: boolean; newSessionId?: string } => {
+      const sessions = sessionsByDay[input.date];
+      if (!sessions) return { success: false };
+      const idx = sessions.findIndex((s) => s.id === input.sessionId);
+      if (idx < 0) return { success: false };
+      const original = sessions[idx];
+      if (input.splitAtMs <= original.start || input.splitAtMs >= original.end) {
+        return { success: false };
+      }
+      const first: Session = { ...original, end: input.splitAtMs };
+      const second: Session = {
+        ...original,
+        id: nanoid(12),
+        start: input.splitAtMs,
+        splitFrom: original.id,
+      };
+      const nextSessions = [...sessions];
+      nextSessions.splice(idx, 1, first, second);
+      sessionsByDay[input.date] = nextSessions;
+      saveSessionsByDay(sessionsByDay);
+      cache.invalidate();
+      broadcast();
+      return { success: true, newSessionId: second.id };
+    },
+  );
+
+  ipcMain.handle(
+    "merge-sessions",
+    (_e, input: MergeSessionsInput): { success: boolean; mergedId?: string } => {
+      const sessions = sessionsByDay[input.date];
+      if (!sessions || input.sessionIds.length < 2) return { success: false };
+      const idSet = new Set(input.sessionIds);
+      const targets = sessions.filter((s) => idSet.has(s.id));
+      if (targets.length < 2) return { success: false };
+
+      const first = targets[0];
+      const sameKey = targets.every(
+        (s) =>
+          s.app === first.app &&
+          s.title === first.title &&
+          s.source === first.source &&
+          s.manualEntryId === first.manualEntryId &&
+          s.calendarEventId === first.calendarEventId,
+      );
+      if (!sameKey) return { success: false };
+
+      const start = Math.min(...targets.map((s) => s.start));
+      const end = Math.max(...targets.map((s) => s.end));
+      const merged: Session = {
+        id: nanoid(12),
+        start,
+        end,
+        app: first.app,
+        title: first.title,
+        source: first.source,
+        manualEntryId: first.manualEntryId,
+        calendarEventId: first.calendarEventId,
+        mergedFrom: targets.map((s) => s.id),
+      };
+
+      const nextSessions = sessions.filter((s) => !idSet.has(s.id));
+      nextSessions.push(merged);
+      nextSessions.sort((a, b) => a.start - b.start);
+      sessionsByDay[input.date] = nextSessions;
+      saveSessionsByDay(sessionsByDay);
+      cache.invalidate();
+      broadcast();
+      return { success: true, mergedId: merged.id };
+    },
+  );
 
   ipcMain.handle("unassign-activity", (_e, { activityKey: key }: { activityKey: string }): void => {
     const next = { ...overrides };

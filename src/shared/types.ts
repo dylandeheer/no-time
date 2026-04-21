@@ -204,12 +204,49 @@ export interface DayReviewProjectGroup {
   totalSeconds: number;
 }
 
+export interface TimelineSegment {
+  id: SessionId;
+  start: number;
+  end: number;
+  app: string;
+  title: string;
+  source: SessionSource;
+  projectId: ProjectId | null;
+  projectColor?: string;
+  projectName?: string;
+  assignedBy: AssignedBy;
+  calendarEventId?: string;
+  calendarTitle?: string;
+  manualEntryId?: ManualEntryId;
+  mergedFrom?: SessionId[];
+  activityKey: string;
+}
+
 export interface DayReviewState {
   date: string;
   totalSeconds: number;
   reviewedAt: number | null;
   groups: DayReviewProjectGroup[];
   unassigned: DayReviewEntry[];
+  timeline: TimelineSegment[];
+  dayStartMs: number;
+  dayEndMs: number;
+}
+
+export interface BulkAssignInput {
+  activityKeys: string[];
+  projectId: ProjectId;
+}
+
+export interface SplitSessionInput {
+  sessionId: SessionId;
+  date: string;
+  splitAtMs: number;
+}
+
+export interface MergeSessionsInput {
+  sessionIds: SessionId[];
+  date: string;
 }
 
 export const activityKey = (app: string, title: string): string => `${app}::${title}`;

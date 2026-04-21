@@ -23,6 +23,9 @@ import type {
   LlmState,
   LlmActivity,
   Suggestion,
+  BulkAssignInput,
+  SplitSessionInput,
+  MergeSessionsInput,
 } from "../shared/types.js";
 
 type TrackingListener = (state: TrackingState) => void;
@@ -172,6 +175,19 @@ const api = {
     ipcRenderer.invoke("clear-dismissed-suggestions"),
 
   runSuggestionSweep: (): Promise<void> => ipcRenderer.invoke("run-suggestion-sweep"),
+
+  bulkAssign: (input: BulkAssignInput): Promise<number> =>
+    ipcRenderer.invoke("bulk-assign", input),
+
+  splitSession: (
+    input: SplitSessionInput,
+  ): Promise<{ success: boolean; newSessionId?: string }> =>
+    ipcRenderer.invoke("split-session", input),
+
+  mergeSessions: (
+    input: MergeSessionsInput,
+  ): Promise<{ success: boolean; mergedId?: string }> =>
+    ipcRenderer.invoke("merge-sessions", input),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);
