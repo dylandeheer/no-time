@@ -363,11 +363,21 @@ function stopCalendarPolling(): void {
 
 const SUGGESTION_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 
+function emitLlmActivity(): void {
+  const running =
+    (suggestionsEngine?.isRunning() ?? false) ||
+    llmSupervisor?.getState().status === "loading" ||
+    llmSupervisor?.getState().status === "downloading";
+  const pendingCount = Object.keys(suggestionsByKey).length;
+  dashboard?.webContents.send("llm-activity", { running, pendingCount });
+}
+
 function ensureLlmSupervisor(): LLMSupervisor {
   if (!llmSupervisor) {
     llmSupervisor = new LLMSupervisor(settings.suggestions.modelId);
     llmSupervisor.onState((state) => {
       dashboard?.webContents.send("llm-state", state);
+      emitLlmActivity();
     });
   }
   return llmSupervisor;
@@ -404,7 +414,11 @@ function ensureSuggestionsEngine(): SuggestionsEngine {
         saveDismissedSuggestions(dismissedSuggestions);
       },
       onSuggestionsChanged: () => {
+        emitLlmActivity();
         broadcast();
+      },
+      onRunningChanged: () => {
+        emitLlmActivity();
       },
     });
   }
@@ -683,6 +697,7 @@ function registerIpc(): void {
 
     cache.invalidate();
     broadcast();
+    suggestionsEngine?.scheduleRun();
     return project;
   });
 
@@ -739,6 +754,7 @@ function registerIpc(): void {
     saveRules(rules);
     cache.invalidate();
     broadcast();
+    suggestionsEngine?.scheduleRun();
     return rule;
   });
 
@@ -761,6 +777,7 @@ function registerIpc(): void {
     saveRules(rules);
     cache.invalidate();
     broadcast();
+    suggestionsEngine?.scheduleRun();
     return updated;
   });
 
@@ -769,6 +786,7 @@ function registerIpc(): void {
     saveRules(rules);
     cache.invalidate();
     broadcast();
+    suggestionsEngine?.scheduleRun();
   });
 
   ipcMain.handle(
@@ -1009,6 +1027,14 @@ function registerIpc(): void {
   ipcMain.handle("llm-restart", (): void => {
     if (!settings.suggestions.enabled) return;
     ensureLlmSupervisor().restart();
+  });
+
+  ipcMain.handle("llm-activity", (): { running: boolean; pendingCount: number } => {
+    const running =
+      (suggestionsEngine?.isRunning() ?? false) ||
+      llmSupervisor?.getState().status === "loading" ||
+      llmSupervisor?.getState().status === "downloading";
+    return { running, pendingCount: Object.keys(suggestionsByKey).length };
   });
 
   ipcMain.handle("get-suggestions", (): Record<string, Suggestion> => {

@@ -60,7 +60,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   suggestions: {
     enabled: false,
-    minSecondsThreshold: 300,
+    minSecondsThreshold: 120,
     modelId: "Qwen/Qwen3-0.6B-MLX-4bit",
   },
   minActivitySeconds: 300,

@@ -34,6 +34,7 @@ export interface SuggestionsEngineDeps {
   getDismissed: () => Record<string, number>;
   setDismissed: (next: Record<string, number>) => void;
   onSuggestionsChanged: () => void;
+  onRunningChanged?: (running: boolean) => void;
 }
 
 export class SuggestionsEngine {
@@ -46,15 +47,21 @@ export class SuggestionsEngine {
     this.deps = deps;
   }
 
+  isRunning(): boolean {
+    return this.inFlight;
+  }
+
   scheduleRun(): void {
     if (this.inFlight) {
       this.pendingRun = true;
       return;
     }
     this.inFlight = true;
+    this.deps.onRunningChanged?.(true);
     setImmediate(() => {
       void this.runOnce().finally(() => {
         this.inFlight = false;
+        this.deps.onRunningChanged?.(false);
         if (this.pendingRun) {
           this.pendingRun = false;
           this.scheduleRun();

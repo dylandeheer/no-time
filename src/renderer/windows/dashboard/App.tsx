@@ -105,7 +105,12 @@ export function App() {
           </nav>
 
           <div className="space-y-1 border-t border-border p-3">
-            <LLMStatusIndicator />
+            <LLMStatusIndicator
+              onJumpToReview={() => {
+                setView("review");
+                setDetailProjectId(null);
+              }}
+            />
             <NavButton
               icon={<SettingsIcon className="h-4 w-4" />}
               label="Settings"

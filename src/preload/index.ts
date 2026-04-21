@@ -21,12 +21,14 @@ import type {
   CalendarAuthStatus,
   CalendarInfo,
   LlmState,
+  LlmActivity,
   Suggestion,
 } from "../shared/types.js";
 
 type TrackingListener = (state: TrackingState) => void;
 type FocusReviewListener = (date: string) => void;
 type LlmStateListener = (state: LlmState) => void;
+type LlmActivityListener = (activity: LlmActivity) => void;
 
 const api = {
   getState: (): Promise<TrackingState> => ipcRenderer.invoke("get-state"),
@@ -147,6 +149,15 @@ const api = {
     ipcRenderer.on("llm-state", handler);
     return () => ipcRenderer.off("llm-state", handler);
   },
+
+  onLlmActivity: (listener: LlmActivityListener): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, activity: LlmActivity): void =>
+      listener(activity);
+    ipcRenderer.on("llm-activity", handler);
+    return () => ipcRenderer.off("llm-activity", handler);
+  },
+
+  getLlmActivity: (): Promise<LlmActivity> => ipcRenderer.invoke("llm-activity"),
 
   getSuggestions: (): Promise<Record<string, Suggestion>> =>
     ipcRenderer.invoke("get-suggestions"),

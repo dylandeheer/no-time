@@ -276,6 +276,11 @@ export interface LlmState {
   message?: string;
 }
 
+export interface LlmActivity {
+  running: boolean;
+  pendingCount: number;
+}
+
 export interface Suggestion {
   activityKey: string;
   projectId: ProjectId;
