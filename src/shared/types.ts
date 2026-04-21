@@ -59,6 +59,7 @@ export interface UpdateManualEntryInput {
 }
 
 export interface ActivitySummary {
+  key: string;
   app: string;
   title: string;
   time: number;
@@ -132,6 +133,7 @@ export interface AssignActivityInput {
 export type DateRange = "today" | "week" | "month" | "all";
 
 export interface HistoricalActivity {
+  key: string;
   app: string;
   title: string;
   totalTime: number;

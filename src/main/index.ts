@@ -152,6 +152,7 @@ function buildTrackingState(): TrackingState {
 
     const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries, calendarEvents });
     activities[key] = {
+      key,
       app: parsed.app,
       title: displayTitleFor(parsed.app, parsed.title),
       time,
@@ -198,6 +199,7 @@ function buildHistoricalState(range: DateRange): HistoricalState {
 
     const match = cache.get(parsed.app, parsed.title, { rules, overrides, manualEntries, calendarEvents });
     activities[key] = {
+      key,
       app: parsed.app,
       title: displayTitleFor(parsed.app, parsed.title),
       totalTime,

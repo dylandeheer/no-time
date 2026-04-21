@@ -53,7 +53,7 @@ struct StatusPayload: Encodable {
     let modelId: String?
 }
 
-let defaultModelId = "mlx-community/Qwen3-0.6B-MLX-4bit"
+let defaultModelId = "Qwen/Qwen3-0.6B-MLX-4bit"
 
 actor LLMService {
     private var container: ModelContainer?

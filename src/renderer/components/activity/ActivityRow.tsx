@@ -53,7 +53,12 @@ export function ActivityRow({ activity, project, projects }: Props) {
         {formatTime(activity.time)}
       </div>
       <div className="shrink-0">
-        <AssignmentDropdown activity={activity} project={project} projects={projects} />
+        <AssignmentDropdown
+          activity={activity}
+          project={project}
+          projects={projects}
+          activityKey={activity.key}
+        />
       </div>
     </div>
   );

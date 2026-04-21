@@ -24,6 +24,7 @@ export function ActivitiesView({ state }: Props) {
   const normalized: ActivitySummary[] = useMemo(() => {
     if (dateRange === "today") {
       return Object.values(state.activities).map((a) => ({
+        key: a.key,
         app: a.app,
         title: a.title,
         time: a.time,
@@ -33,6 +34,7 @@ export function ActivitiesView({ state }: Props) {
     }
     if (!historicalState) return [];
     return Object.values(historicalState.activities).map((a) => ({
+      key: a.key,
       app: a.app,
       title: a.title,
       time: a.totalTime,

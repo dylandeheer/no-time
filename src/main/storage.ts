@@ -75,7 +75,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   suggestions: {
     enabled: false,
     minSecondsThreshold: 300,
-    modelId: "mlx-community/Qwen3-0.6B-MLX-4bit",
+    modelId: "Qwen/Qwen3-0.6B-MLX-4bit",
   },
 };
 
@@ -133,8 +133,16 @@ export function loadSettings(): AppSettings {
     suggestions: {
       ...DEFAULT_SETTINGS.suggestions,
       ...(stored.suggestions ?? {}),
+      modelId: migrateModelId(stored.suggestions?.modelId),
     },
   };
+}
+
+function migrateModelId(stored: string | undefined): string {
+  const defaultId = DEFAULT_SETTINGS.suggestions.modelId;
+  if (!stored) return defaultId;
+  if (stored === "mlx-community/Qwen3-0.6B-MLX-4bit") return defaultId;
+  return stored;
 }
 
 export function saveSettings(settings: AppSettings): void {

@@ -24,12 +24,13 @@ interface Props {
   activity: ActivitySummary;
   project: Project | null;
   projects: Project[];
+  activityKey?: string;
 }
 
-export function AssignmentDropdown({ activity, project, projects }: Props) {
+export function AssignmentDropdown({ activity, project, projects, activityKey }: Props) {
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const key = makeKey(activity.app, activity.title);
+  const key = activityKey ?? makeKey(activity.app, activity.title);
 
   const assign = async (projectId: string) => {
     setOpen(false);

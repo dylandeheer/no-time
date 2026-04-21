@@ -92,6 +92,7 @@ export function ReviewEntryRow({ entry, project, projects, onEditManual }: Props
         ) : (
           <AssignmentDropdown
             activity={{
+              key: entry.key,
               app: entry.app,
               title: entry.title,
               time: entry.seconds,
@@ -100,6 +101,7 @@ export function ReviewEntryRow({ entry, project, projects, onEditManual }: Props
             }}
             project={project}
             projects={projects}
+            activityKey={entry.key}
           />
         )}
       </div>
